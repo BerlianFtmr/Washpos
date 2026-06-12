@@ -100,11 +100,7 @@ async function findDetail(id) {
     SELECT
       o.id,
       o.customer_id,
-      c.name AS customer_name,
-      c.whatsapp AS customer_whatsapp,
-      c.address AS customer_address,
       o.user_id,
-      u.username AS user_name,
       o.status,
       o.payment_status,
       o.total_price,
@@ -112,8 +108,6 @@ async function findDetail(id) {
       o.created_at,
       o.updated_at
     FROM orders o
-    JOIN customers c ON o.customer_id = c.id
-    JOIN users u ON o.user_id = u.id
     WHERE o.id = ?
   `, [id]);
 
@@ -121,20 +115,55 @@ async function findDetail(id) {
 
   const order = orders[0];
 
-  // Get order items
+  // Get customer info as nested object
+  const [customers] = await pool.query(
+    'SELECT id, name, whatsapp, address, created_at FROM customers WHERE id = ?',
+    [order.customer_id]
+  );
+  if (customers.length > 0) {
+    order.customer = customers[0];
+  }
+
+  // Get user info as nested object
+  const [users] = await pool.query(
+    'SELECT id, username, role FROM users WHERE id = ?',
+    [order.user_id]
+  );
+  if (users.length > 0) {
+    order.user = users[0];
+  }
+
+  // Get order items with nested service object
   const [items] = await pool.query(`
     SELECT
       oi.id,
+      oi.order_id,
       oi.service_id,
-      s.name AS service_name,
       oi.quantity,
       oi.subtotal
     FROM order_items oi
-    JOIN services s ON oi.service_id = s.id
     WHERE oi.order_id = ?
   `, [id]);
 
+  // Fetch service details for each item
+  for (const item of items) {
+    const [services] = await pool.query(
+      'SELECT id, name, price, unit, active, created_at FROM services WHERE id = ?',
+      [item.service_id]
+    );
+    if (services.length > 0) {
+      item.service = services[0];
+    }
+  }
+
   order.items = items;
+
+  // Get payments for this order
+  const [payments] = await pool.query(
+    'SELECT id, order_id, amount, method, note, created_at FROM payments WHERE order_id = ? ORDER BY created_at ASC',
+    [id]
+  );
+  order.payments = payments;
 
   return order;
 }
@@ -298,15 +327,26 @@ async function getAuditLogs(orderId) {
   const [logs] = await pool.query(`
     SELECT
       al.id,
+      al.order_id,
       al.old_status,
       al.new_status,
-      al.changed_at,
-      u.username AS changed_by_name
+      al.changed_by,
+      al.changed_at
     FROM audit_logs al
-    JOIN users u ON al.changed_by = u.id
     WHERE al.order_id = ?
     ORDER BY al.changed_at ASC
   `, [orderId]);
+
+  // Attach nested user object for each log
+  for (const log of logs) {
+    const [users] = await pool.query(
+      'SELECT id, username, role FROM users WHERE id = ?',
+      [log.changed_by]
+    );
+    if (users.length > 0) {
+      log.user = users[0];
+    }
+  }
 
   return logs;
 }

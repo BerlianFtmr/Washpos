@@ -14,18 +14,19 @@ const pool = require('../config/database');
 async function findAll(search = '', page = 1, limit = 10) {
   const offset = (page - 1) * limit;
   let query = `
-    SELECT id, name, whatsapp, address, created_at
-    FROM customers
+    SELECT c.id, c.name, c.whatsapp, c.address, c.created_at,
+      (SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.id) AS order_count
+    FROM customers c
   `;
   let params = [];
 
   // Add search filter
   if (search) {
-    query += ` WHERE name LIKE ? OR whatsapp LIKE ?`;
+    query += ` WHERE c.name LIKE ? OR c.whatsapp LIKE ?`;
     params.push(`%${search}%`, `%${search}%`);
   }
 
-  query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+  query += ` ORDER BY c.created_at DESC LIMIT ? OFFSET ?`;
   params.push(limit, offset);
 
   const [customers] = await pool.query(query, params);
