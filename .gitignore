@@ -1,0 +1,193 @@
+# ==========================================
+# SISTEM OPERASI (OS)
+# ==========================================
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+*.sys
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.trash/
+.nfs*
+
+# ==========================================
+# IDE & EDITOR (VS Code, JetBrains, Eclipse)
+# ==========================================
+# Visual Studio Code
+.vscode/
+!.vscode/extensions.json
+*.code-workspace
+.history/
+
+# JetBrains (IntelliJ, WebStorm, PhpStorm, PyCharm, dll.)
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Eclipse
+.metadata/
+bin/
+tmp/
+*.tmp
+*.bak
+.classpath
+.project
+.settings/
+
+# ==========================================
+# BAHASA PEMROGRAMAN & FRAMEWORK
+# ==========================================
+# Node.js / JavaScript / TypeScript
+node_modules/
+bower_components/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.next/
+.nuxt/
+dist/
+build/
+.cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+eggs/
+parts/
+bin/
+var/
+sdist/
+develop-eggs/
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.tox/
+.coverage
+htmlcov/
+
+# PHP (Composer & Laravel)
+/vendor/
+composer.lock
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+.vagrant/
+/public/storage
+/public/hot
+/storage/*.key
+
+# Java
+*.class
+*.log
+*.jar
+*.war
+*.ear
+target/
+.gradle/
+build/
+
+# C / C++
+*.o
+*.obj
+*.out
+*.exe
+*.gch
+*.pch
+
+# Go
+/bin/
+/pkg/
+src/github.com/
+
+# ==========================================
+# ENVIRONMENT VARIABLES & CREDENTIALS
+# ==========================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+*.cert
+*.crt
+*.pfx
+credentials.json
+
+# ==========================================
+# DOCS & AI ASSISTANTS (Claude, Cursor, v0, dll.)
+# ==========================================
+# Catatan instruksi Claude (sering berisi prompt spesifik proyek)
+CLAUDE.md
+AGENTS.md
+
+# Aturan dan konfigurasi AI Code Editor (Cursor, Windsurf, Roo Cline, dll.)
+.cursorrules
+.cursor/
+.windsurfrules
+.codeium/
+.copilot/
+
+# File dokumentasi lokal / coretan pribadi yang tidak perlu di-push
+NOTES.md
+todo.md
+TODO.md
+scratchpad.md
+workspace.md
+2026-06-12_washpos-ui-specification.md
+PRD_Washpos.md
+SRS_Washpos.md
+referensi-ui/
+docs/
+BUGFIX-LOG.md
+
+# ==========================================
+# LOGS, DATABASES, & TEMPORARY FILES
+# ==========================================
+*.log
+logs/
+*.sqlite
+*.sqlite3
+*.db
+.sass-cache/
+.eslintcache
+.stylelintcache
+
+# ==========================================
+# DOCKER & VIRTUALIZATION
+# ==========================================
+.docker/
+docker-compose.override.yml
