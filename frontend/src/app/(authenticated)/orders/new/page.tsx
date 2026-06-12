@@ -136,7 +136,7 @@ export default function CreateOrderPage() {
         {/* LEFT: FORM */}
         <div className="w-full lg:w-2/3 space-y-6">
           {/* STEP 1: Pilih Pelanggan */}
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-visible">
             <div className="p-5 border-b border-slate-200 bg-slate-50/50">
               <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs">1</span>

@@ -38,6 +38,13 @@ export default function AuthenticatedLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
 
+  // Redirect to login if unauthenticated (must be in useEffect, not during render)
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [loading, user, router]);
+
   // Close user dropdown on outside click
   useEffect(() => {
     function handleClick() {
@@ -61,9 +68,8 @@ export default function AuthenticatedLayout({
     );
   }
 
-  // Fallback: if proxy didn't redirect (e.g. client-side navigation), redirect manually
+  // Wait for redirect to take effect
   if (!user) {
-    router.push('/login');
     return null;
   }
 

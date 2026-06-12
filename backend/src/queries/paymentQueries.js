@@ -136,12 +136,13 @@ async function create(data) {
       [data.order_id]
     );
 
-    const paidSoFar = currentTotal[0].total;
-    const newTotal = paidSoFar + data.amount;
+    const paidSoFar = Number(currentTotal[0].total);
+    const newTotal = paidSoFar + Number(data.amount);
+    const totalPrice = Number(order.total_price);
 
     // Determine new payment status
     let newPaymentStatus = 'partial';
-    if (newTotal >= order.total_price) {
+    if (newTotal >= totalPrice) {
       newPaymentStatus = 'paid';
     }
 
