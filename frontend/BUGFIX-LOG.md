@@ -1,9 +1,9 @@
 # Bugfix Log — Washpos Frontend
 
-> **Tanggal:** 2026-06-13
-> **Scope:** Phase 5 Final Check + smoke test via Chrome DevTools
-> **Total bug ditemukan:** 9
-> **Total bug resolved:** 9
+> **Tanggal:** 2026-06-13 (Phase 5), 2026-06-14 (Phase 8)
+> **Scope:** Phase 5 Final Check + smoke test via Chrome DevTools; Phase 8 Testing & Final via API automation
+> **Total bug ditemukan:** 12
+> **Total bug resolved:** 12
 
 ---
 
@@ -487,6 +487,258 @@
 
 ---
 
+## BUG-10: TypeScript build gagal — 2 error type pre-existing yang memblokir `npm run build`
+
+| Field | Detail |
+|-------|--------|
+| **Lokasi** | `frontend/src/app/(authenticated)/users/page.tsx` baris 167, `frontend/src/lib/services/statsService.ts` baris 27 |
+| **Severity** | High (build failure) |
+| **Gejala** | `npm run build` gagal pada tahap "Running TypeScript" dengan 2 error. Build worker exited code 1. Phase 8 (P8-08) tidak bisa lulus. |
+| **Root Cause** | Dua error type yang sudah ada sejak Phase 7 tapi diabaikan karena dianggap "pre-existing" dan tidak memblokir dev server (dev tidak menjalankan full type check):<br><br>**Error 1 — `users/page.tsx:167`:**<br>Prop `disabled={isCurrentUser}` mengharapkan `boolean \| undefined`, tapi `isCurrentUser` dideklarasikan sebagai `currentUser && u.id === currentUser.id`. Karena `currentUser` bertipe `User \| null`, ekspresi `currentUser && ...` menghasilkan `null \| undefined \| boolean` (operator `&&` mengembalikan operand kiri jika falsy). TypeScript melihat `boolean \| null` → `null` tidak assignable ke `boolean \| undefined`.<br><br>**Error 2 — `statsService.ts:27`:**<br>Cast `(raw.recent_orders ?? []) as DashboardStats['recentOrders']` ditolak. `raw.recent_orders` bertipe `Array<Record<string, unknown>>` (dari interface `ApiDashboardResponse`), sedangkan `DashboardStats['recentOrders']` adalah `Order[]`. TypeScript error TS2352: "Conversion of type `Record<string, unknown>[]` to type `Order[]` may be a mistake because neither type sufficiently overlaps." Karena `Record<string, unknown>` tidak punya field `id`, `customer_id`, dst., TS tidak yakin cast-nya valid. |
+| **Solusi** | **Error 1:** Coercion eksplisit ke boolean dengan `!!`:<br>`const isCurrentUser = !!currentUser && u.id === currentUser.id;`<br>Operator `!!` memaksa operand kiri menjadi `boolean`, sehingga seluruh ekspresi pasti `boolean`.<br><br>**Error 2:** Double assertion via `unknown`:<br>`(raw.recent_orders ?? []) as unknown as DashboardStats['recentOrders']`<br>TypeScript mengizinkan cast apa pun melalui `unknown` (escape hatch), dengan asumsi developer tahu tipe runtime-nya benar. |
+| **File Terdampak** | `frontend/src/app/(authenticated)/users/page.tsx`, `frontend/src/lib/services/statsService.ts` |
+| **Diff (users/page.tsx)** | |
+```diff
+-        const isCurrentUser = currentUser && u.id === currentUser.id;
++        const isCurrentUser = !!currentUser && u.id === currentUser.id;
+```
+*(Diaplikasikan ke 2 lokasi: kolom "username" baris 112 dan kolom "actions" baris 147 — keduanya pola identik.)*
+| **Diff (statsService.ts)** | |
+```diff
+-      recentOrders: (raw.recent_orders ?? []) as DashboardStats['recentOrders'],
++      recentOrders: (raw.recent_orders ?? []) as unknown as DashboardStats['recentOrders'],
+```
+| **Verifikasi** | `npm run build` setelah fix: "Finished TypeScript in 8.2s", 15 routes ter-generate, 0 error. |
+| **Status** | Resolved |
+
+---
+
+## BUG-11: Payment status tidak recalculate saat edit/delete pembayaran
+
+| Field | Detail |
+|-------|--------|
+| **Lokasi** | `backend/src/queries/paymentQueries.js` — fungsi `update()` baris 180-206 dan `remove()` baris 212-215 (versi sebelum fix) |
+| **Severity** | High |
+| **Gejala** | `POST /orders/:id/payments` (create payment) mengupdate `payment_status` order dengan benar (unpaid→partial→paid), tapi `PATCH /payments/:id` (edit) dan `DELETE /payments/:id` (delete) **tidak mengubah** `payment_status` order sama sekali — status membeku pada nilai saat payment terakhir di-create.<br><br>**Skenario teramati (via API test):**<br>- Order baru: `payment_status=unpaid` ✓<br>- Add payment 1000 (dari total 50000): `payment_status=partial` ✓<br>- Edit payment jadi 50000 (full): `payment_status` tetap `partial` ✗ (seharusnya `paid`)<br>- Delete payment: `payment_status` tetap `partial` ✗ (seharusnya kembali `unpaid`) |
+| **Root Cause** | **Ketidakkonsistenan implementasi antara `create()` vs `update()`/`remove()`.**<br><br>`create()` di `paymentQueries.js` sudah benar — ia menghitung total bayar, menentukan status baru, insert payment, dan update `orders.payment_status` dalam satu transaksi (ini diperbaiki di BUG-09 untuk handle MySQL DECIMAL string coercion).<br><br>Tapi `update()` dan `remove()` hanya menjalankan SQL update/delete pada baris `payments` **tanpa** menghitung ulang `payment_status` order. Akibatnya:<br>- Edit jumlah pembayaran → total berubah, tapi `orders.payment_status` tidak ikut berubah<br>- Hapus pembayaran → total berkurang, tapi status tetap mencerminkan kondisi lama<br><br>Ini melanggar business rule di `CLAUDE.md`: *"Payment status auto-update: When payments are added/edited/deleted, the order's payment_status is automatically recalculated."* |
+| **Solusi** | 1. Tambah helper `recalcOrderPaymentStatus(connection, orderId)` yang menghitung ulang `payment_status` dari `SUM(amount)` semua payments untuk order tersebut. Logika: `totalPaid <= 0 → unpaid`, `>= totalPrice → paid`, else `partial`. Semua nilai MySQL DECIMAL di-`Number()` untuk menghindari bug string coercion yang sama dengan BUG-09.<br>2. Refactor `update()` menjadi transaksi: update baris payment → query `order_id` → panggil `recalcOrderPaymentStatus()`.<br>3. Refactor `remove()` menjadi transaksi: query `order_id` (sebelum delete) → delete baris → panggil `recalcOrderPaymentStatus()`.<br>4. Helper menerima `connection` (bukan `pool`) agar berjalan dalam transaksi yang sama dengan operasi utama — menjamin konsistensi (rollback semua jika ada error). |
+| **File Terdampak** | `backend/src/queries/paymentQueries.js` |
+| **Diff** | |
+```diff
++/**
++ * Recalculate order payment_status based on sum of payments.
++ * Must be called within a transaction (uses the given connection).
++ */
++async function recalcOrderPaymentStatus(connection, orderId) {
++  const [orders] = await connection.query(
++    'SELECT total_price FROM orders WHERE id = ?',
++    [orderId]
++  );
++  if (orders.length === 0) return;
++
++  const [sumResult] = await connection.query(
++    'SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE order_id = ?',
++    [orderId]
++  );
++
++  const totalPaid = Number(sumResult[0].total);
++  const totalPrice = Number(orders[0].total_price);
++
++  let newStatus;
++  if (totalPaid <= 0) {
++    newStatus = 'unpaid';
++  } else if (totalPaid >= totalPrice) {
++    newStatus = 'paid';
++  } else {
++    newStatus = 'partial';
++  }
++
++  await connection.query(
++    'UPDATE orders SET payment_status = ? WHERE id = ?',
++    [newStatus, orderId]
++  );
++}
+```
+```diff
+ async function update(id, data) {
+   const fields = [];
+   const values = [];
+   // ... push fields/values dari data ...
+
+   if (fields.length === 0) return false;
+
+-  values.push(id);
+-  await pool.query(
+-    `UPDATE payments SET ${fields.join(', ')} WHERE id = ?`,
+-    values
+-  );
+-
+-  return true;
++  const connection = await pool.getConnection();
++  try {
++    await connection.beginTransaction();
++
++    values.push(id);
++    await connection.query(
++      `UPDATE payments SET ${fields.join(', ')} WHERE id = ?`,
++      values
++    );
++
++    const [rows] = await connection.query(
++      'SELECT order_id FROM payments WHERE id = ?',
++      [id]
++    );
++    if (rows.length > 0) {
++      await recalcOrderPaymentStatus(connection, rows[0].order_id);
++    }
++
++    await connection.commit();
++    return true;
++  } catch (error) {
++    await connection.rollback();
++    throw error;
++  } finally {
++    connection.release();
++  }
+ }
+```
+```diff
+ async function remove(id) {
+-  await pool.query('DELETE FROM payments WHERE id = ?', [id]);
+-  return true;
++  const connection = await pool.getConnection();
++  try {
++    await connection.beginTransaction();
++
++    const [rows] = await connection.query(
++      'SELECT order_id FROM payments WHERE id = ?',
++      [id]
++    );
++    if (rows.length === 0) {
++      await connection.rollback();
++      return false;
++    }
++
++    const orderId = rows[0].order_id;
++    await connection.query('DELETE FROM payments WHERE id = ?', [id]);
++    await recalcOrderPaymentStatus(connection, orderId);
++
++    await connection.commit();
++    return true;
++  } catch (error) {
++    await connection.rollback();
++    throw error;
++  } finally {
++    connection.release();
++  }
+ }
+```
+| **Hubungan dengan BUG-09** | BUG-09 memperbaiki string coercion di `create()` dengan `Number()`. Bug ini menutup celah yang sama untuk path edit/delete — helper `recalcOrderPaymentStatus` juga pakai `Number()` agar konsisten dengan pola BUG-09. |
+| **Test Result** | |
+| Operasi | Total Bayar | Total Order | Status Before | Status After |
+|-----------|-------------|-------------|---------------|--------------|
+| Create payment 1000 | 1000 | 50000 | unpaid | **partial** ✓ |
+| Edit → full 50000 | 50000 | 50000 | partial | **paid** ✓ |
+| Edit → partial 1000 | 1000 | 50000 | paid | **partial** ✓ |
+| Delete payment | 0 | 50000 | partial | **unpaid** ✓ |
+| **Status** | Resolved |
+
+---
+
+## BUG-12: Pagination meta di-drop oleh response helper — semua list endpoint tidak mengembalikan total count
+
+| Field | Detail |
+|-------|--------|
+| **Lokasi** | `backend/src/utils/response.js` — fungsi `successResponse()`; `frontend/src/lib/api.ts` — method `getPaginated()` |
+| **Severity** | High |
+| **Gejala** | Semua 5 list endpoint (`GET /orders`, `/customers`, `/services`, `/payments`, `/users`) tidak menyertakan field `pagination` di response JSON, padahal controller semua sudah mengirimkannya. Frontend `getPaginated()` selalu menghitung `total = arr.length` (panjang array halaman saat ini, bukan total record), sehingga `totalPages` selalu 1 untuk data yang muat dalam satu halaman — kontrol pagination UI tidak menampilkan halaman lain meski ada banyak data. |
+| **Root Cause** | **Mismatch signature antara pemanggil dan definisi fungsi.**<br><br>Semua 5 controller memanggil `successResponse` dengan **5 argumen**:<br>```javascript<br>return successResponse(res, 'Orders retrieved successfully', result.orders, 200, {<br>  pagination: result.pagination<br>});<br>```<br><br>Tapi definisi `successResponse` di `response.js` hanya menerima **4 parameter**:<br>```javascript<br>function successResponse(res, message = 'Success', data = null, statusCode = 200) {<br>  return res.status(statusCode).json({ success: true, message, data });<br>}<br>```<br><br>Argumen ke-5 (`{ pagination: ... }`) **diabaikan diam-diam** — tidak ada error, tidak ada warning. JavaScript tidak mengeluh ketika function dipanggil dengan argumen lebih banyak dari parameter yang didefinisikan. Response JSON tidak pernah menyertakan `pagination`.<br><br>**Workaround frontend sebelumnya:** BUG-03 menambahkan `getPaginated()` yang pakai `total: arr.length` sebagai placeholder. Catatan BUG-03 secara eksplisit menyatakan: *"Saat ini pagination menggunakan client-side calculation (arr.length) karena backend tidak mengembalikan total count. Jika backend nanti diupdate untuk return pagination info, getPaginated bisa disesuaikan."* — Bug ini adalah penyelesaian utang teknis tersebut. |
+| **Dampak** | DataTable pagination kontrol (prev/next buttons + page indicator) tidak pernah muncul atau selalu menampilkan "Halaman 1 dari 1" meski ada puluhan record. User tidak bisa navigasi ke halaman 2+. Search/filter tetap berfungsi karena filter terjadi server-side per request. |
+| **Solusi** | **Backend:** Tambah parameter ke-5 `meta = null` ke `successResponse`. Saat disediakan, merge field-field meta ke top-level response via `Object.assign`. Response menjadi `{ success, message, data, pagination }`.<br><br>**Frontend:** Refactor `api.ts`:<br>1. Pecah `request` jadi `requestRaw` yang mengembalikan **full body** (bukan hanya `body.data`), agar caller bisa akses top-level fields seperti `pagination`.<br>2. `getPaginated()` baca `body.pagination` dari backend (page/limit/total), hitung `totalPages = ceil(total / limit)`. Fallback ke `arr.length` hanya jika meta tidak ada (backward-compat).<br>3. Method `get/post/patch/delete` tetap ekstrak `.data` seperti sebelumnya (behavior tidak berubah untuk caller existing). |
+| **File Terdampak** | `backend/src/utils/response.js`, `frontend/src/lib/api.ts` |
+| **Diff (response.js)** | |
+```diff
+-function successResponse(res, message = 'Success', data = null, statusCode = 200) {
+-  return res.status(statusCode).json({
+-    success: true,
+-    message,
+-    data
+-  });
+-}
++function successResponse(res, message = 'Success', data = null, statusCode = 200, meta = null) {
++  const response = {
++    success: true,
++    message,
++    data
++  };
++  if (meta && typeof meta === 'object') {
++    Object.assign(response, meta);
++  }
++  return res.status(statusCode).json(response);
++}
+```
+| **Diff (api.ts)** | |
+```diff
+-async function request<T>(
++async function requestRaw<T>(
+   endpoint: string,
+   options: RequestInit = {},
+-): Promise<T> {
++): Promise<ApiResponse<T> & { pagination?: PaginationMeta }> {
+   // ... token, headers, fetch, body, 401 handling, error throw ...
+-  return body.data as T;
++  return body as ApiResponse<T> & { pagination?: PaginationMeta };
+ }
+
+-  getPaginated<T>(endpoint, params?) {
+-    const page = (params?.page as number) ?? 1;
+-    const limit = (params?.limit as number) ?? 10;
+-    return this.get<T[]>(endpoint, params).then((data) => {
+-      const arr = Array.isArray(data) ? data : [];
+-      return {
+-        data: arr,
+-        pagination: {
+-          page,
+-          limit,
+-          total: arr.length,
+-          totalPages: Math.max(1, Math.ceil(arr.length / limit)),
+-        },
+-      } satisfies PaginatedData<T>;
+-    });
+-  },
++  getPaginated<T>(endpoint, params?) {
++    const fallbackLimit = (params?.limit as number) ?? 10;
++    const fallbackPage = (params?.page as number) ?? 1;
++    return requestRaw<T[]>(withParams(endpoint, params)).then((body) => {
++      const arr = Array.isArray(body.data) ? body.data : [];
++      const pg = body.pagination;
++      const limit = pg?.limit ?? fallbackLimit;
++      const total = pg?.total ?? arr.length;
++      const page = pg?.page ?? fallbackPage;
++      return {
++        data: arr,
++        pagination: {
++          page,
++          limit,
++          total,
++          totalPages: Math.max(1, Math.ceil(total / limit)),
++        },
++      } satisfies PaginatedData<T>;
++    });
++  },
+```
+| **Verifikasi via API** | Semua 5 endpoint sekarang return `pagination` dengan total benar: |
+| Endpoint | total | Hasil |
+|----------|-------|-------|
+| `/orders?limit=2` | 2 | `pagination: { page:1, limit:2, total:2 }` ✓ |
+| `/customers?limit=2` | 4 | `pagination: { page:1, limit:2, total:4 }` ✓ |
+| `/services?limit=2` | 10 | `pagination: { page:1, limit:2, total:10 }` ✓ |
+| `/payments?limit=2` | 2 | `pagination: { page:1, limit:2, total:2 }` ✓ |
+| `/users?limit=2` | 2 | `pagination: { page:1, limit:2, total:2 }` ✓ |
+| **Status** | Resolved |
+
+---
+
 ## Verifikasi Pasca-Perbaikan
 
 Semua 17 route dites via Chrome DevTools dengan akun admin:
@@ -515,4 +767,4 @@ Semua 17 route dites via Chrome DevTools dengan akun admin:
 
 ---
 
-*Dokumen dibuat: 2026-06-13*
+*Dokumen dibuat: 2026-06-13 (BUG-01 s/d BUG-09, Phase 5 Final Check). Update: 2026-06-14 (BUG-10 s/d BUG-12, Phase 8 Testing & Final — ditemukan via API automation + code review, bukan smoke test browser).*

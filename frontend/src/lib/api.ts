@@ -15,10 +15,20 @@ class ApiError extends Error {
   }
 }
 
-async function request<T>(
+interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+}
+
+/**
+ * Low-level request returning the FULL response body (so callers can read
+ * top-level fields like `pagination` alongside `data`).
+ */
+async function requestRaw<T>(
   endpoint: string,
   options: RequestInit = {},
-): Promise<T> {
+): Promise<ApiResponse<T> & { pagination?: PaginationMeta }> {
   const token = getToken();
 
   const headers: Record<string, string> = {
@@ -47,63 +57,69 @@ async function request<T>(
     throw new ApiError(res.status, body);
   }
 
-  return body.data as T;
+  return body as ApiResponse<T> & { pagination?: PaginationMeta };
+}
+
+function withParams(endpoint: string, params?: Record<string, string | number | boolean | undefined>): string {
+  if (!params) return endpoint;
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') {
+      searchParams.set(key, String(value));
+    }
+  });
+  const qs = searchParams.toString();
+  return qs ? `${endpoint}?${qs}` : endpoint;
 }
 
 export const api = {
   get<T>(endpoint: string, params?: Record<string, string | number | boolean | undefined>) {
-    let url = endpoint;
-    if (params) {
-      const searchParams = new URLSearchParams();
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== '') {
-          searchParams.set(key, String(value));
-        }
-      });
-      const qs = searchParams.toString();
-      if (qs) url += `?${qs}`;
-    }
-    return request<T>(url);
+    return requestRaw<T>(withParams(endpoint, params)).then((body) => body.data as T);
   },
 
   /**
    * GET request that normalizes list API responses into PaginatedData.
-   * The backend returns `body.data` as a plain array (no pagination wrapper).
-   * This method wraps it into { data: T[], pagination: { ... } }.
+   * The backend returns `body.data` as a plain array plus a top-level
+   * `pagination` object ({ page, limit, total }). Falls back gracefully
+   * if pagination meta is absent.
    */
   getPaginated<T>(endpoint: string, params?: Record<string, string | number | boolean | undefined>) {
-    const page = (params?.page as number) ?? 1;
-    const limit = (params?.limit as number) ?? 10;
-    return this.get<T[]>(endpoint, params).then((data) => {
-      const arr = Array.isArray(data) ? data : [];
+    const fallbackLimit = (params?.limit as number) ?? 10;
+    const fallbackPage = (params?.page as number) ?? 1;
+    return requestRaw<T[]>(withParams(endpoint, params)).then((body) => {
+      const arr = Array.isArray(body.data) ? body.data : [];
+      const pg = body.pagination;
+      const limit = pg?.limit ?? fallbackLimit;
+      const total = pg?.total ?? arr.length;
+      const page = pg?.page ?? fallbackPage;
       return {
         data: arr,
         pagination: {
           page,
           limit,
-          total: arr.length,
-          totalPages: Math.max(1, Math.ceil(arr.length / limit)),
+          total,
+          totalPages: Math.max(1, Math.ceil(total / limit)),
         },
       } satisfies PaginatedData<T>;
     });
   },
 
   post<T>(endpoint: string, body?: unknown) {
-    return request<T>(endpoint, {
+    return requestRaw<T>(endpoint, {
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
-    });
+    }).then((res) => res.data as T);
   },
 
   patch<T>(endpoint: string, body?: unknown) {
-    return request<T>(endpoint, {
+    return requestRaw<T>(endpoint, {
       method: 'PATCH',
       body: body ? JSON.stringify(body) : undefined,
-    });
+    }).then((res) => res.data as T);
   },
 
   delete<T>(endpoint: string) {
-    return request<T>(endpoint, { method: 'DELETE' });
+    return requestRaw<T>(endpoint, { method: 'DELETE' }).then((res) => res.data as T);
   },
 };
 

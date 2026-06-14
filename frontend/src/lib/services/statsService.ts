@@ -24,7 +24,7 @@ export const statsService = {
         status: s.status as OrderStatus,
         count: s.count,
       })),
-      recentOrders: (raw.recent_orders ?? []) as DashboardStats['recentOrders'],
+      recentOrders: (raw.recent_orders ?? []) as unknown as DashboardStats['recentOrders'],
     }));
   },
 };

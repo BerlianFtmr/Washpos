@@ -109,7 +109,7 @@ export default function UsersPage() {
       header: 'Username',
       render: (row) => {
         const u = row as unknown as User;
-        const isCurrentUser = currentUser && u.id === currentUser.id;
+        const isCurrentUser = !!currentUser && u.id === currentUser.id;
         return (
           <div className="flex items-center gap-2">
             <span className="font-semibold text-slate-800">{u.username}</span>
@@ -144,7 +144,7 @@ export default function UsersPage() {
       className: 'text-center',
       render: (row) => {
         const u = row as unknown as User;
-        const isCurrentUser = currentUser && u.id === currentUser.id;
+        const isCurrentUser = !!currentUser && u.id === currentUser.id;
         return (
           <div className="flex items-center justify-center gap-1">
             {/* Navigasi ke SCR-13: Form Pengguna (edit mode) */}

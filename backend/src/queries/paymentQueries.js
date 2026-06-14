@@ -173,7 +173,43 @@ async function create(data) {
 }
 
 /**
- * Update payment
+ * Recalculate order payment_status based on sum of payments.
+ * Must be called within a transaction (uses the given connection).
+ * @param {object} connection - pooled/transactional connection
+ * @param {number} orderId
+ */
+async function recalcOrderPaymentStatus(connection, orderId) {
+  const [orders] = await connection.query(
+    'SELECT total_price FROM orders WHERE id = ?',
+    [orderId]
+  );
+  if (orders.length === 0) return;
+
+  const [sumResult] = await connection.query(
+    'SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE order_id = ?',
+    [orderId]
+  );
+
+  const totalPaid = Number(sumResult[0].total);
+  const totalPrice = Number(orders[0].total_price);
+
+  let newStatus;
+  if (totalPaid <= 0) {
+    newStatus = 'unpaid';
+  } else if (totalPaid >= totalPrice) {
+    newStatus = 'paid';
+  } else {
+    newStatus = 'partial';
+  }
+
+  await connection.query(
+    'UPDATE orders SET payment_status = ? WHERE id = ?',
+    [newStatus, orderId]
+  );
+}
+
+/**
+ * Update payment dan auto-recalculate payment_status order (transaction)
  * @param {number} id
  * @param {object} data
  */
@@ -196,22 +232,68 @@ async function update(id, data) {
 
   if (fields.length === 0) return false;
 
-  values.push(id);
-  await pool.query(
-    `UPDATE payments SET ${fields.join(', ')} WHERE id = ?`,
-    values
-  );
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
 
-  return true;
+    values.push(id);
+    await connection.query(
+      `UPDATE payments SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
+
+    // Get order_id for this payment, then recalc its payment_status
+    const [rows] = await connection.query(
+      'SELECT order_id FROM payments WHERE id = ?',
+      [id]
+    );
+    if (rows.length > 0) {
+      await recalcOrderPaymentStatus(connection, rows[0].order_id);
+    }
+
+    await connection.commit();
+    return true;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 /**
- * Delete payment
+ * Delete payment dan auto-recalculate payment_status order (transaction)
  * @param {number} id
  */
 async function remove(id) {
-  await pool.query('DELETE FROM payments WHERE id = ?', [id]);
-  return true;
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // Get order_id before deleting (for recalc)
+    const [rows] = await connection.query(
+      'SELECT order_id FROM payments WHERE id = ?',
+      [id]
+    );
+    if (rows.length === 0) {
+      await connection.rollback();
+      return false;
+    }
+
+    const orderId = rows[0].order_id;
+
+    await connection.query('DELETE FROM payments WHERE id = ?', [id]);
+
+    await recalcOrderPaymentStatus(connection, orderId);
+
+    await connection.commit();
+    return true;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 module.exports = {
