@@ -1,0 +1,4 @@
+# Database backups (environment-specific, not committed)
+# Dump commands:
+#   docker exec laundry_db mysqldump -uroot -proot laundry_db > backups/<name>.sql
+*.sql
