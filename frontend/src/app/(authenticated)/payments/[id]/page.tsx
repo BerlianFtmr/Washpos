@@ -8,25 +8,18 @@ import { paymentService } from '@/lib/services/paymentService';
 import { orderService } from '@/lib/services/orderService';
 import StatusBadge from '@/components/ui/StatusBadge';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { showSuccess, showError } from '@/components/ui/Toast';
+import { useAdminGuard } from '@/hooks/useAdminGuard';
 import type { Payment, Order, PaymentMethod } from '@/types';
-
-const formatRupiah = (n: number) =>
-  new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n);
-
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('id-ID', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+import { formatRupiah, formatDate } from '@/lib/format';
 
 export default function PaymentDetailPage() {
   const router = useRouter();
   const params = useParams();
   const paymentId = Number(params.id);
+  /** P6-02: Halaman admin-only — redirect pegawai ke dashboard */
+  const { loading: authLoading, authorized } = useAdminGuard();
 
   // Data state
   const [payment, setPayment] = useState<Payment | null>(null);
@@ -73,6 +66,10 @@ export default function PaymentDetailPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // P6-02: Admin-only guard — render nothing (redirect handled by hook)
+  if (authLoading) return <PageLoading />;
+  if (!authorized) return null;
 
   // Calculate payment projection
   const orderTotal = order?.total_price ?? 0;

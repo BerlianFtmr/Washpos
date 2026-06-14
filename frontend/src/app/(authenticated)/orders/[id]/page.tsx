@@ -17,12 +17,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { showSuccess, showError } from '@/components/ui/Toast';
 import type { Order, Customer, OrderStatus, PaymentMethod } from '@/types';
-
-const formatRupiah = (n: number) =>
-  new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n);
-
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+import { formatRupiah, formatDate } from '@/lib/format';
 
 const statusOptions: { value: OrderStatus; label: string }[] = [
   { value: 'pending', label: 'Pending' },

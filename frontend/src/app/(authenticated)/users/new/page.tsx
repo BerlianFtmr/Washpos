@@ -6,16 +6,24 @@ import Link from 'next/link';
 import { AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { userService } from '@/lib/services/userService';
 import Breadcrumb from '@/components/ui/Breadcrumb';
+import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { showSuccess, showError } from '@/components/ui/Toast';
+import { useAdminGuard } from '@/hooks/useAdminGuard';
 import type { UserRole } from '@/types';
 
 export default function CreateUserPage() {
   const router = useRouter();
+  /** P6-02: Halaman admin-only — redirect pegawai ke dashboard */
+  const { loading: authLoading, authorized } = useAdminGuard();
 
   const [form, setForm] = useState({ username: '', password: '', role: 'pegawai' as UserRole });
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  // P6-02: Admin-only guard
+  if (authLoading) return <PageLoading />;
+  if (!authorized) return null;
 
   const validate = (): boolean => {
     const errs: Record<string, string> = {};

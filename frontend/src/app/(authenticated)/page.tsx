@@ -11,26 +11,10 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { statsService } from '@/lib/services/statsService';
+import { formatRupiah, formatDate } from '@/lib/format';
 import type { DashboardStats, OrderStatus } from '@/types';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { CardSkeleton, TableSkeleton } from '@/components/ui/LoadingSpinner';
-
-// --- Helpers ---
-const formatRupiah = (n: number) =>
-  new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    maximumFractionDigits: 0,
-  }).format(n);
-
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('id-ID', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 
 // Chart bar color per status (matches StatusBadge palette)
 const chartColors: Record<OrderStatus, string> = {

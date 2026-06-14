@@ -10,13 +10,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { showSuccess, showError } from '@/components/ui/Toast';
 import type { Column } from '@/components/ui/DataTable';
 import type { Customer } from '@/types';
-
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('id-ID', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+import { formatDateOnly as formatDate } from '@/lib/format';
 
 export default function CustomersPage() {
   const router = useRouter();

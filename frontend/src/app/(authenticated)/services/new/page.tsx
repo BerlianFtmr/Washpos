@@ -4,9 +4,12 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Save, X, Tag, Hash, AlertCircle } from 'lucide-react';
 import Breadcrumb from '@/components/ui/Breadcrumb';
+import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { serviceService } from '@/lib/services/serviceService';
 import { showSuccess, showError } from '@/components/ui/Toast';
+import { useAdminGuard } from '@/hooks/useAdminGuard';
 import type { ServiceUnit } from '@/types';
+import { formatRupiahHint } from '@/lib/format';
 
 const unitOptions: { value: ServiceUnit; label: string }[] = [
   { value: 'kg', label: 'kg (Kilogram)' },
@@ -14,11 +17,6 @@ const unitOptions: { value: ServiceUnit; label: string }[] = [
   { value: 'meter', label: 'meter' },
   { value: 'pair', label: 'pair (Pasang)' },
 ];
-
-const formatRupiahHint = (val: string) => {
-  if (!val || isNaN(Number(val))) return 'Rp 0';
-  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(val));
-};
 
 interface FormErrors {
   name?: string;
@@ -28,6 +26,8 @@ interface FormErrors {
 
 export default function CreateServicePage() {
   const router = useRouter();
+  /** P6-02: Halaman admin-only — redirect pegawai ke dashboard */
+  const { loading: authLoading, authorized } = useAdminGuard();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -37,6 +37,10 @@ export default function CreateServicePage() {
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
+
+  // P6-02: Admin-only guard
+  if (authLoading) return <PageLoading />;
+  if (!authorized) return null;
 
   const validate = (): boolean => {
     const newErrors: FormErrors = {};

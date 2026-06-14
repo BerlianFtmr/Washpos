@@ -12,12 +12,7 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import type { Column } from '@/components/ui/DataTable';
 import type { Order, Customer, OrderStatus } from '@/types';
 import { showError } from '@/components/ui/Toast';
-
-const formatRupiah = (n: number) =>
-  new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n);
-
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+import { formatRupiah, formatDate } from '@/lib/format';
 
 const statusOptions: { value: string; label: string }[] = [
   { value: '', label: 'Semua Status' },

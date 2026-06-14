@@ -11,9 +11,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import type { Column } from '@/components/ui/DataTable';
 import type { Service } from '@/types';
 import { showSuccess, showError } from '@/components/ui/Toast';
-
-const formatRupiah = (n: number) =>
-  new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n);
+import { formatRupiah } from '@/lib/format';
 
 export default function ServicesPage() {
   const router = useRouter();

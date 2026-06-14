@@ -11,9 +11,7 @@ import Breadcrumb from '@/components/ui/Breadcrumb';
 import CustomerFormModal from '@/components/customers/CustomerFormModal';
 import { showSuccess, showError } from '@/components/ui/Toast';
 import type { Customer, Service } from '@/types';
-
-const formatRupiah = (n: number) =>
-  new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n);
+import { formatRupiah } from '@/lib/format';
 
 interface OrderItemDraft {
   tempId: number;

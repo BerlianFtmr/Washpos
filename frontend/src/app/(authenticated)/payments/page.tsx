@@ -13,18 +13,7 @@ import { showSuccess, showError } from '@/components/ui/Toast';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Column } from '@/components/ui/DataTable';
 import type { Payment, Order } from '@/types';
-
-const formatRupiah = (n: number) =>
-  new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n);
-
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('id-ID', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+import { formatRupiah, formatDate } from '@/lib/format';
 
 export default function PaymentsPage() {
   const router = useRouter();

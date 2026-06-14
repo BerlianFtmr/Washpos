@@ -10,19 +10,17 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { showSuccess, showError } from '@/components/ui/Toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAdminGuard } from '@/hooks/useAdminGuard';
+import { PageLoading } from '@/components/ui/LoadingSpinner';
 import type { Column } from '@/components/ui/DataTable';
 import type { User } from '@/types';
-
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('id-ID', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+import { formatDateOnly as formatDate } from '@/lib/format';
 
 export default function UsersPage() {
   const router = useRouter();
   const { user: currentUser } = useAuth();
+  /** P6-02: Halaman admin-only — redirect pegawai ke dashboard */
+  const { loading: authLoading, authorized } = useAdminGuard();
 
   // Data state
   const [users, setUsers] = useState<User[]>([]);
@@ -63,6 +61,10 @@ export default function UsersPage() {
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  // P6-02: Admin-only guard — render nothing (redirect handled by hook)
+  if (authLoading) return <PageLoading />;
+  if (!authorized) return null;
 
   const handlePageChange = (page: number) => {
     setPagination((prev) => ({ ...prev, page }));
