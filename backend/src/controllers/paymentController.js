@@ -6,6 +6,7 @@
 const { body, validationResult } = require('express-validator');
 const { findAll, findById, getOrderForPayment, getTotalPaymentsForOrder, create, update, remove } = require('../queries/paymentQueries');
 const { successResponse, errorResponse, validationError } = require('../utils/response');
+const { resolveCodeToId } = require('../utils/codeResolver');
 
 const VALID_METHODS = ['cash', 'transfer', 'ewallet'];
 
@@ -38,9 +39,15 @@ const updatePaymentValidation = [
  */
 async function list(req, res) {
   try {
-    const filters = {
-      order_id: req.query.order_id ? parseInt(req.query.order_id) : undefined
-    };
+    const filters = {};
+
+    // Filter by order: order_code (resolve ke id) atau order_id (legacy)
+    if (req.query.order_code) {
+      const oid = await resolveCodeToId('orders', req.query.order_code);
+      if (oid != null) filters.order_id = oid;
+    } else if (req.query.order_id) {
+      filters.order_id = parseInt(req.query.order_id);
+    }
 
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;

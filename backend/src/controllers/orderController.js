@@ -1,37 +1,74 @@
 /**
  * Order Controller
  * CRUD logic untuk orders + status update + audit trail
+ *
+ * FASE 2: payload & filter menerima entity code (customer_code, service_code,
+ * order_code) SELAIN legacy id (customer_id, service_id, order_id). Response
+ * otomatis menyertakan field `code` via query layer.
  */
 
 const { body, validationResult } = require('express-validator');
 const { findAll, findDetail, create, update, updateStatus, updatePaymentStatus, remove, getAuditLogs } = require('../queries/orderQueries');
 const { successResponse, errorResponse, validationError } = require('../utils/response');
+const { resolveCodeToId, isCode } = require('../utils/codeResolver');
+const { isEntityCode, isPositiveInt } = require('../validators/codeValidator');
 
 const VALID_STATUSES = ['pending', 'dicuci', 'disetrika', 'siap', 'diambil', 'cancelled'];
 
 /**
  * Validation rules
+ *
+ * Create/update order menerima referensi entity dalam dua bentuk:
+ *   - Legacy: customer_id (int), items[].service_id (int)
+ *   - Code   : customer_code (CUS-XXXXXX), items[].service_code (SVC-NN)
+ * Field *_id juga boleh berisi code string (flexible).
  */
 const createOrderValidation = [
   body('customer_id')
-    .isInt()
-    .withMessage('Customer ID must be an integer'),
+    .optional()
+    .custom((v) => isPositiveInt(v) || isEntityCode('CUS', v))
+    .withMessage('customer_id must be a positive integer or a valid CUS code'),
+  body('customer_code')
+    .optional()
+    .custom((v) => isEntityCode('CUS', v))
+    .withMessage('customer_code must be a valid CUS code (e.g. CUS-4F8KP2)'),
+  body().custom((body) => {
+    if (body.customer_id === undefined && body.customer_code === undefined) {
+      throw new Error('Either customer_id or customer_code is required');
+    }
+    return true;
+  }),
   body('items')
     .isArray({ min: 1 })
     .withMessage('At least one item is required'),
   body('items.*.service_id')
-    .isInt()
-    .withMessage('Service ID must be an integer'),
+    .optional()
+    .custom((v) => isPositiveInt(v) || isEntityCode('SVC', v))
+    .withMessage('service_id must be a positive integer or a valid SVC code'),
+  body('items.*.service_code')
+    .optional()
+    .custom((v) => isEntityCode('SVC', v))
+    .withMessage('service_code must be a valid SVC code (e.g. SVC-01)'),
   body('items.*.quantity')
     .isFloat({ gt: 0 })
-    .withMessage('Quantity must be greater than 0')
+    .withMessage('Quantity must be greater than 0'),
+  body('items.*').custom((item) => {
+    if (item.service_id === undefined && item.service_code === undefined) {
+      throw new Error('Each item requires service_id or service_code');
+    }
+    return true;
+  })
 ];
 
 const updateOrderValidation = [
   body('customer_id')
     .optional()
-    .isInt()
-    .withMessage('Customer ID must be an integer'),
+    .custom((v) => isPositiveInt(v) || isEntityCode('CUS', v))
+    .withMessage('customer_id must be a positive integer or a valid CUS code'),
+  body('customer_code')
+    .optional()
+    .custom((v) => isEntityCode('CUS', v))
+    .withMessage('customer_code must be a valid CUS code'),
   body('notes')
     .optional()
     .isString()
@@ -45,15 +82,55 @@ const updateStatusValidation = [
 ];
 
 /**
+ * Resolve reference entity (customer/service) ke INT id.
+ * Menerima: number (pass-through), code string di `value`, atau code di `codeField`.
+ *
+ * @param {*} idLike - nilai field *_id (bisa int, code string, atau undefined)
+ * @param {*} codeLike - nilai field *_code (bisa code string atau undefined)
+ * @param {string} prefix - 'CUS' | 'SVC' | ...
+ * @param {string} table - 'customers' | 'services' | ...
+ * @param {string} label - label utk pesan error
+ * @returns {Promise<{id: number|null, error: string|null}>}
+ */
+async function resolveEntityRef(idLike, codeLike, prefix, table, label) {
+  if (codeLike !== undefined && codeLike !== null && codeLike !== '') {
+    const id = await resolveCodeToId(table, codeLike);
+    if (id == null) {
+      return { id: null, error: `${label} with code '${String(codeLike).toUpperCase()}' not found` };
+    }
+    return { id, error: null };
+  }
+  if (idLike !== undefined && idLike !== null) {
+    if (isCode(String(idLike))) {
+      const id = await resolveCodeToId(table, String(idLike));
+      if (id == null) {
+        return { id: null, error: `${label} with code '${String(idLike).toUpperCase()}' not found` };
+      }
+      return { id, error: null };
+    }
+    // numeric
+    return { id: Number(idLike), error: null };
+  }
+  return { id: null, error: `${label} reference is required` };
+}
+
+/**
  * GET /orders
- * List semua orders dengan filters
+ * List semua orders dengan filters. Support customer_code (di-resolve ke id).
  */
 async function list(req, res) {
   try {
     const filters = {
-      status: req.query.status,
-      customer_id: req.query.customer_id ? parseInt(req.query.customer_id) : undefined
+      status: req.query.status
     };
+
+    // Customer filter: customer_code (resolve) atau customer_id (legacy)
+    if (req.query.customer_code) {
+      const cid = await resolveCodeToId('customers', req.query.customer_code);
+      if (cid != null) filters.customer_id = cid;
+    } else if (req.query.customer_id) {
+      filters.customer_id = parseInt(req.query.customer_id);
+    }
 
     // Pegawai hanya bisa lihat order sendiri
     if (req.user.role === 'pegawai') {
@@ -76,7 +153,8 @@ async function list(req, res) {
 
 /**
  * GET /orders/:id
- * Detail order dengan items
+ * Detail order dengan items. `req.params.id` sudah di-resolve oleh middleware
+ * resolveIdParam (bisa int dari code ATAU legacy numeric).
  */
 async function detail(req, res) {
   try {
@@ -105,7 +183,7 @@ async function detail(req, res) {
 
 /**
  * POST /orders
- * Buat order baru dengan items
+ * Buat order baru. Resolve customer_code / service_code ke id sebelum insert.
  */
 async function createNew(req, res) {
   const errors = validationResult(req);
@@ -113,16 +191,38 @@ async function createNew(req, res) {
     return validationError(res, errors.array());
   }
 
-  const connection = require('../config/database'); // For transaction
-
   try {
-    const { customer_id, items, notes } = req.body;
+    const { items, notes } = req.body;
 
-    // Create order
+    // Resolve customer reference
+    const cust = await resolveEntityRef(
+      req.body.customer_id,
+      req.body.customer_code,
+      'CUS', 'customers', 'Customer'
+    );
+    if (cust.error) {
+      return errorResponse(res, cust.error, 404);
+    }
+
+    // Resolve setiap item service reference
+    const resolvedItems = [];
+    for (const [i, item] of items.entries()) {
+      const svc = await resolveEntityRef(
+        item.service_id,
+        item.service_code,
+        'SVC', 'services', `Service (item ${i + 1})`
+      );
+      if (svc.error) {
+        return errorResponse(res, svc.error, 404);
+      }
+      resolvedItems.push({ service_id: svc.id, quantity: item.quantity });
+    }
+
+    // Create order (auto-generate ORD-YYMMDD-XXXXXX)
     const orderId = await create({
-      customer_id,
+      customer_id: cust.id,
       user_id: req.user.id,
-      items,
+      items: resolvedItems,
       notes
     });
 
@@ -142,7 +242,7 @@ async function createNew(req, res) {
 
 /**
  * PATCH /orders/:id
- * Update order (customer_id, notes)
+ * Update order (customer_id/customer_code, notes).
  */
 async function updateData(req, res) {
   const errors = validationResult(req);
@@ -152,7 +252,24 @@ async function updateData(req, res) {
 
   try {
     const { id } = req.params;
-    const data = { ...req.body };
+    const data = {};
+
+    // Resolve customer reference bila ada
+    if (req.body.customer_id !== undefined || req.body.customer_code !== undefined) {
+      const cust = await resolveEntityRef(
+        req.body.customer_id,
+        req.body.customer_code,
+        'CUS', 'customers', 'Customer'
+      );
+      if (cust.error) {
+        return errorResponse(res, cust.error, 404);
+      }
+      data.customer_id = cust.id;
+    }
+
+    if (req.body.notes !== undefined) {
+      data.notes = req.body.notes;
+    }
 
     // Check if order exists
     const order = await findDetail(id);
@@ -179,7 +296,7 @@ async function updateData(req, res) {
 
 /**
  * PATCH /orders/:id/status
- * Update status order dengan audit trail
+ * Update status order dengan audit trail.
  */
 async function updateStatusHandler(req, res) {
   const errors = validationResult(req);
@@ -221,7 +338,7 @@ async function updateStatusHandler(req, res) {
 
 /**
  * DELETE /orders/:id
- * Hapus order (Admin only)
+ * Hapus order (Admin only).
  */
 async function removeData(req, res) {
   try {

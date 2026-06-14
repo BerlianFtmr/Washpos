@@ -4,7 +4,7 @@
  */
 
 const { body, validationResult } = require('express-validator');
-const { findAll, findById, create, update, remove, searchByUsername } = require('../queries/userQueries');
+const { findAll, findById, findByUsername, create, update, remove, searchByUsername } = require('../queries/userQueries');
 const { hashPassword } = require('../utils/hash');
 const { successResponse, errorResponse, validationError } = require('../utils/response');
 
@@ -117,7 +117,7 @@ async function createNew(req, res) {
     const { username, password, role } = req.body;
 
     // Check if username exists
-    const existing = await findById(username);
+    const existing = await findByUsername(username);
     if (existing) {
       return errorResponse(res, 'Username already exists', 400);
     }
@@ -125,7 +125,7 @@ async function createNew(req, res) {
     // Hash password
     const hashedPassword = await hashPassword(password);
 
-    // Create user
+    // Create user (auto-generate USR-XXXXXX)
     const userId = await create({
       username,
       password: hashedPassword,
@@ -136,6 +136,7 @@ async function createNew(req, res) {
 
     return successResponse(res, 'User created successfully', {
       id: user.id,
+      code: user.code,
       username: user.username,
       role: user.role
     }, 201);
@@ -177,6 +178,7 @@ async function updateData(req, res) {
 
     return successResponse(res, 'User updated successfully', {
       id: updated.id,
+      code: updated.code,
       username: updated.username,
       role: updated.role
     });

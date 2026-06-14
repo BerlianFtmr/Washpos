@@ -75,6 +75,7 @@ async function login(req, res) {
       token,
       user: {
         id: user.id,
+        code: user.code,
         username: user.username,
         role: user.role
       }
@@ -120,6 +121,7 @@ async function register(req, res) {
 
     return successResponse(res, 'User created successfully', {
       id: user.id,
+      code: user.code,
       username: user.username,
       role: user.role
     }, 201);
@@ -144,6 +146,7 @@ async function me(req, res) {
 
     return successResponse(res, 'User retrieved successfully', {
       id: user.id,
+      code: user.code,
       username: user.username,
       role: user.role,
       created_at: user.created_at

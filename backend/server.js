@@ -63,6 +63,24 @@ const swaggerOptions = {
         - Payment management dengan auto-update status
         - Dashboard statistics
 
+        ## Entity Codes (Hybrid ID Strategy)
+        Setiap entity utama punya **business code** publik di samping PK INT internal.
+        Semua endpoint dengan path param \`{id}\` menerima **baik integer (legacy) maupun code**.
+
+        | Entity    | Code Format              | Contoh               |
+        |-----------|--------------------------|----------------------|
+        | users     | \`USR-XXXXXX\`            | \`USR-7KQ2M9\`        |
+        | customers | \`CUS-XXXXXX\`            | \`CUS-4F8KP2\`        |
+        | services  | \`SVC-NN\`                | \`SVC-01\`            |
+        | orders    | \`ORD-YYMMDD-XXXXXX\`     | \`ORD-260614-K7M2QF\` |
+        | payments  | \`PAY-YYMMDD-XXXXXX\`     | \`PAY-260614-9F2K4M\` |
+
+        Random segment: Base32 Crockford (tanpa I/L/O/U). Code **case-insensitive** di input,
+        disimpan uppercase. Contoh: \`GET /customers/CUS-4F8KP2\` ≡ \`GET /customers/5\`.
+
+        Pada payload create order, referensi entity juga menerima code:
+        \`customer_code\` / \`customer_id\`, \`items[].service_code\` / \`items[].service_id\`.
+
         ## Authentication
         Sebagian besar endpoint memerlukan JWT token. Gunakan endpoint POST /api/v1/auth/login untuk mendapatkan token.
 
