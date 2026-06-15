@@ -1,9 +1,16 @@
 /**
  * Customer SQL Queries
  * Query functions untuk customers table
+ *
+ * FASE 2: kolom `code` (CUS-XXXXXX) di-SELECT di semua query; `findByCode`
+ * ditambahkan; `create` auto-generate code dengan retry on ER_DUP_ENTRY.
  */
 
 const pool = require('../config/database');
+const { generateCode } = require('../utils/codeGenerator');
+
+const CODE_PREFIX = 'CUS';
+const MAX_CODE_RETRY = 3;
 
 /**
  * Get all customers with search and pagination
@@ -14,7 +21,7 @@ const pool = require('../config/database');
 async function findAll(search = '', page = 1, limit = 10) {
   const offset = (page - 1) * limit;
   let query = `
-    SELECT c.id, c.name, c.whatsapp, c.address, c.created_at,
+    SELECT c.id, c.code, c.name, c.whatsapp, c.address, c.created_at,
       (SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.id) AS order_count
     FROM customers c
   `;
@@ -53,13 +60,26 @@ async function findAll(search = '', page = 1, limit = 10) {
 }
 
 /**
- * Find customer by ID
+ * Find customer by ID (legacy / internal).
  * @param {number} id
  */
 async function findById(id) {
   const [rows] = await pool.query(
-    'SELECT id, name, whatsapp, address, created_at FROM customers WHERE id = ?',
+    'SELECT id, code, name, whatsapp, address, created_at FROM customers WHERE id = ?',
     [id]
+  );
+  return rows[0];
+}
+
+/**
+ * Find customer by code (case-insensitive).
+ * @param {string} code - mis. 'CUS-4F8KP2'
+ */
+async function findByCode(code) {
+  if (typeof code !== 'string' || code.length === 0) return null;
+  const [rows] = await pool.query(
+    'SELECT id, code, name, whatsapp, address, created_at FROM customers WHERE code = ? LIMIT 1',
+    [code.toUpperCase()]
   );
   return rows[0];
 }
@@ -70,22 +90,33 @@ async function findById(id) {
  */
 async function findByWhatsapp(whatsapp) {
   const [rows] = await pool.query(
-    'SELECT id, name, whatsapp, address, created_at FROM customers WHERE whatsapp = ?',
+    'SELECT id, code, name, whatsapp, address, created_at FROM customers WHERE whatsapp = ?',
     [whatsapp]
   );
   return rows[0];
 }
 
 /**
- * Create new customer
+ * Create new customer. Auto-generate `code` (CUS-XXXXXX) dengan retry bila
+ * terjadi tabrakan UNIQUE (sangat jarang untuk 6-char Base32, tetap di-guard).
  * @param {object} data - {name, whatsapp, address}
+ * @returns {Promise<number>} insertId
  */
 async function create(data) {
-  const [result] = await pool.query(
-    'INSERT INTO customers (name, whatsapp, address) VALUES (?, ?, ?)',
-    [data.name, data.whatsapp, data.address || null]
-  );
-  return result.insertId;
+  for (let attempt = 0; attempt < MAX_CODE_RETRY; attempt++) {
+    const code = generateCode(CODE_PREFIX);
+    try {
+      const [result] = await pool.query(
+        'INSERT INTO customers (code, name, whatsapp, address) VALUES (?, ?, ?, ?)',
+        [code, data.name, data.whatsapp, data.address || null]
+      );
+      return result.insertId;
+    } catch (err) {
+      if (err.code === 'ER_DUP_ENTRY' && attempt < MAX_CODE_RETRY - 1) continue;
+      throw err;
+    }
+  }
+  throw new Error('Failed to generate unique customer code after retries');
 }
 
 /**
@@ -133,6 +164,7 @@ async function remove(id) {
 module.exports = {
   findAll,
   findById,
+  findByCode,
   findByWhatsapp,
   create,
   update,

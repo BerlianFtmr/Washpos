@@ -15,7 +15,7 @@ import { formatRupiah } from '@/lib/format';
 
 interface OrderItemDraft {
   tempId: number;
-  serviceId: number | '';
+  serviceCode: string;
   quantity: number;
 }
 
@@ -33,7 +33,7 @@ export default function CreateOrderPage() {
 
   // Step 2: Items
   const [orderItems, setOrderItems] = useState<OrderItemDraft[]>([
-    { tempId: Date.now(), serviceId: '', quantity: 1 },
+    { tempId: Date.now(), serviceCode: '', quantity: 1 },
   ]);
 
   // Step 3: Notes
@@ -62,9 +62,9 @@ export default function CreateOrderPage() {
   }, [customers, customerSearch]);
 
   // Derived: grand total
-  const getService = (id: number | '') => services.find((s) => s.id === Number(id));
+  const getService = (code: string) => services.find((s) => s.code === code);
   const calcSubtotal = (item: OrderItemDraft) => {
-    const srv = getService(item.serviceId);
+    const srv = getService(item.serviceCode);
     if (!srv) return 0;
     return srv.price * (parseFloat(String(item.quantity)) || 0);
   };
@@ -76,7 +76,7 @@ export default function CreateOrderPage() {
 
   // Handlers
   const handleAddItem = () => {
-    setOrderItems([...orderItems, { tempId: Date.now(), serviceId: '', quantity: 1 }]);
+    setOrderItems([...orderItems, { tempId: Date.now(), serviceCode: '', quantity: 1 }]);
   };
 
   const handleRemoveItem = (tempId: number) => {
@@ -85,7 +85,7 @@ export default function CreateOrderPage() {
     }
   };
 
-  const handleItemChange = (tempId: number, field: 'serviceId' | 'quantity', value: string | number) => {
+  const handleItemChange = (tempId: number, field: 'serviceCode' | 'quantity', value: string | number) => {
     setOrderItems((prev) =>
       prev.map((item) => (item.tempId === tempId ? { ...item, [field]: value } : item))
     );
@@ -101,7 +101,7 @@ export default function CreateOrderPage() {
   const handleSubmit = async () => {
     const errs: Record<string, string> = {};
     if (!selectedCustomer) errs.customer = 'Pelanggan wajib dipilih.';
-    const hasInvalid = orderItems.some((i) => !i.serviceId || parseFloat(String(i.quantity)) <= 0);
+    const hasInvalid = orderItems.some((i) => !i.serviceCode || parseFloat(String(i.quantity)) <= 0);
     if (hasInvalid) errs.items = 'Pastikan semua layanan dipilih dan quantity lebih dari 0.';
     if (orderItems.length === 0) errs.items = 'Minimal 1 item layanan.';
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
@@ -109,16 +109,16 @@ export default function CreateOrderPage() {
     setSubmitting(true);
     try {
       const created = await orderService.create({
-        customer_id: selectedCustomer!.id,
+        customer_code: selectedCustomer!.code,
         items: orderItems.map((i) => ({
-          service_id: Number(i.serviceId),
+          service_code: i.serviceCode,
           quantity: parseFloat(String(i.quantity)),
         })),
         notes: notes.trim() || undefined,
       });
       showSuccess('Pesanan berhasil dibuat');
       /** Navigasi ke SCR-05: Detail Pesanan */
-      router.push(`/orders/${created.id}`);
+      router.push(`/orders/${created.code}`);
     } catch {
       showError('Gagal membuat pesanan. Periksa kembali data Anda.');
     } finally {
@@ -161,7 +161,7 @@ export default function CreateOrderPage() {
                           {filteredCustomers.length > 0 ? (
                             filteredCustomers.map((cust) => (
                               <button
-                                key={cust.id}
+                                key={cust.code}
                                 onClick={() => {
                                   setSelectedCustomer(cust);
                                   setCustomerDropdownOpen(false);
@@ -222,19 +222,19 @@ export default function CreateOrderPage() {
 
               <div className="space-y-3 mb-4">
                 {orderItems.map((item) => {
-                  const srv = getService(item.serviceId);
+                  const srv = getService(item.serviceCode);
                   return (
                     <div key={item.tempId} className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
                       <div className="flex-1 w-full">
                         <label className="block text-xs font-medium text-slate-500 mb-1">Layanan</label>
                         <select
-                          value={item.serviceId}
-                          onChange={(e) => handleItemChange(item.tempId, 'serviceId', e.target.value)}
+                          value={item.serviceCode}
+                          onChange={(e) => handleItemChange(item.tempId, 'serviceCode', e.target.value)}
                           className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                         >
                           <option value="">-- Pilih Layanan --</option>
                           {services.map((s) => (
-                            <option key={s.id} value={s.id}>
+                            <option key={s.code} value={s.code}>
                               {s.name} ({formatRupiah(s.price)}/{s.unit})
                             </option>
                           ))}
@@ -320,7 +320,7 @@ export default function CreateOrderPage() {
               <div className="mb-4 pb-4 border-b border-slate-100 space-y-3">
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Detail Layanan</p>
                 {orderItems.map((item) => {
-                  const srv = getService(item.serviceId);
+                  const srv = getService(item.serviceCode);
                   if (!srv) return null;
                   return (
                     <div key={item.tempId} className="flex justify-between text-sm">
@@ -331,7 +331,7 @@ export default function CreateOrderPage() {
                     </div>
                   );
                 })}
-                {orderItems.every((i) => !i.serviceId) && (
+                {orderItems.every((i) => !i.serviceCode) && (
                   <p className="text-sm text-slate-400 italic">Belum ada layanan ditambahkan</p>
                 )}
               </div>

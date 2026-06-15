@@ -15,27 +15,27 @@ export const orderService = {
     return api.getPaginated<Order>('/orders', params as Record<string, string | number | undefined>);
   },
 
-  getById(id: number) {
-    return api.get<Order>(`/orders/${id}`);
+  getById(code: string) {
+    return api.get<Order>(`/orders/${code}`);
   },
 
   create(payload: CreateOrderPayload) {
     return api.post<Order>('/orders', payload);
   },
 
-  update(id: number, payload: UpdateOrderPayload) {
-    return api.patch<Order>(`/orders/${id}`, payload);
+  update(code: string, payload: UpdateOrderPayload) {
+    return api.patch<Order>(`/orders/${code}`, payload);
   },
 
-  updateStatus(id: number, payload: UpdateOrderStatusPayload) {
-    return api.patch<Order>(`/orders/${id}/status`, payload);
+  updateStatus(code: string, payload: UpdateOrderStatusPayload) {
+    return api.patch<Order>(`/orders/${code}/status`, payload);
   },
 
-  addPayment(id: number, payload: AddPaymentPayload) {
-    return api.post<Payment>(`/orders/${id}/payments`, payload);
+  addPayment(code: string, payload: AddPaymentPayload) {
+    return api.post<Payment>(`/orders/${code}/payments`, payload);
   },
 
-  delete(id: number) {
-    return api.delete<void>(`/orders/${id}`);
+  delete(code: string) {
+    return api.delete<void>(`/orders/${code}`);
   },
 };

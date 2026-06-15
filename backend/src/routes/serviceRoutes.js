@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/auth');
 const { authorize } = require('../middleware/role');
+const { resolveIdParam } = require('../middleware/resolveIdParam');
 const {
   list,
   detail,
@@ -168,7 +169,7 @@ router.get('/', protect, list);
  *       404:
  *         description: Service not found
  */
-router.get('/:id', protect, detail);
+router.get('/:id', protect, resolveIdParam('services'), detail);
 
 /**
  * @swagger
@@ -253,7 +254,7 @@ router.post('/', protect, authorize('admin'), createServiceValidation, createNew
  *       422:
  *         description: Validation error
  */
-router.patch('/:id', protect, authorize('admin'), updateServiceValidation, updateData);
+router.patch('/:id', protect, authorize('admin'), resolveIdParam('services'), updateServiceValidation, updateData);
 
 /**
  * @swagger
@@ -279,6 +280,6 @@ router.patch('/:id', protect, authorize('admin'), updateServiceValidation, updat
  *       404:
  *         description: Service not found
  */
-router.delete('/:id', protect, authorize('admin'), removeData);
+router.delete('/:id', protect, authorize('admin'), resolveIdParam('services'), removeData);
 
 module.exports = router;

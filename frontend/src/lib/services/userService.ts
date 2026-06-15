@@ -11,19 +11,19 @@ export const userService = {
     return api.getPaginated<User>('/users', params as Record<string, string | number | undefined>);
   },
 
-  getById(id: number) {
-    return api.get<User>(`/users/${id}`);
+  getById(code: string) {
+    return api.get<User>(`/users/${code}`);
   },
 
   create(payload: CreateUserPayload) {
     return api.post<User>('/users', payload);
   },
 
-  update(id: number, payload: UpdateUserPayload) {
-    return api.patch<User>(`/users/${id}`, payload);
+  update(code: string, payload: UpdateUserPayload) {
+    return api.patch<User>(`/users/${code}`, payload);
   },
 
-  delete(id: number) {
-    return api.delete<void>(`/users/${id}`);
+  delete(code: string) {
+    return api.delete<void>(`/users/${code}`);
   },
 };

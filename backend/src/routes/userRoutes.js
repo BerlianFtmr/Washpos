@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/auth');
 const { authorize } = require('../middleware/role');
+const { resolveIdParam } = require('../middleware/resolveIdParam');
 const {
   list,
   searchByUsername,
@@ -203,7 +204,7 @@ router.get('/search', protect, authorize('admin'), searchByUsername);
  *       404:
  *         description: User not found
  */
-router.get('/:id', protect, authorize('admin'), detail);
+router.get('/:id', protect, authorize('admin'), resolveIdParam('users'), detail);
 
 /**
  * @swagger
@@ -290,7 +291,7 @@ router.post('/', protect, authorize('admin'), createUserValidation, createNew);
  *       422:
  *         description: Validation error
  */
-router.patch('/:id', protect, authorize('admin'), updateUserValidation, updateData);
+router.patch('/:id', protect, authorize('admin'), resolveIdParam('users'), updateUserValidation, updateData);
 
 /**
  * @swagger
@@ -318,6 +319,6 @@ router.patch('/:id', protect, authorize('admin'), updateUserValidation, updateDa
  *       404:
  *         description: User not found
  */
-router.delete('/:id', protect, authorize('admin'), removeData);
+router.delete('/:id', protect, authorize('admin'), resolveIdParam('users'), removeData);
 
 module.exports = router;

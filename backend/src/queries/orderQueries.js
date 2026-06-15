@@ -1,9 +1,18 @@
 /**
  * Order SQL Queries
  * Query functions untuk orders, order_items, dan audit_logs
+ *
+ * FASE 2: kolom `code` (ORD-YYMMDD-XXXXXX) di-SELECT di semua query, termasuk
+ * nested object (customer, user, service, payments, audit_logs.user).
+ * `findByCode` ditambahkan; `findAll` support filter `customer_code`;
+ * `create` auto-generate code dengan retry on ER_DUP_ENTRY (dalam transaction).
  */
 
 const pool = require('../config/database');
+const { generateCode } = require('../utils/codeGenerator');
+
+const CODE_PREFIX = 'ORD';
+const MAX_CODE_RETRY = 3;
 
 /**
  * Get all orders with filters
@@ -16,10 +25,13 @@ async function findAll(filters = {}, page = 1, limit = 10) {
   let query = `
     SELECT
       o.id,
+      o.code,
       o.customer_id,
+      c.code AS customer_code,
       c.name AS customer_name,
       c.whatsapp AS customer_whatsapp,
       o.user_id,
+      u.code AS user_code,
       u.username AS user_name,
       o.status,
       o.payment_status,
@@ -92,13 +104,15 @@ async function findAll(filters = {}, page = 1, limit = 10) {
 }
 
 /**
- * Get order detail with items
+ * Get order detail with items, nested customer/user/items[].service/payments.
+ * Semua nested object menyertakan field `code`.
  * @param {number} id
  */
 async function findDetail(id) {
   const [orders] = await pool.query(`
     SELECT
       o.id,
+      o.code,
       o.customer_id,
       o.user_id,
       o.status,
@@ -115,25 +129,25 @@ async function findDetail(id) {
 
   const order = orders[0];
 
-  // Get customer info as nested object
+  // Get customer info as nested object (with code)
   const [customers] = await pool.query(
-    'SELECT id, name, whatsapp, address, created_at FROM customers WHERE id = ?',
+    'SELECT id, code, name, whatsapp, address, created_at FROM customers WHERE id = ?',
     [order.customer_id]
   );
   if (customers.length > 0) {
     order.customer = customers[0];
   }
 
-  // Get user info as nested object
+  // Get user info as nested object (with code)
   const [users] = await pool.query(
-    'SELECT id, username, role FROM users WHERE id = ?',
+    'SELECT id, code, username, role FROM users WHERE id = ?',
     [order.user_id]
   );
   if (users.length > 0) {
     order.user = users[0];
   }
 
-  // Get order items with nested service object
+  // Get order items with nested service object (service has code)
   const [items] = await pool.query(`
     SELECT
       oi.id,
@@ -145,10 +159,10 @@ async function findDetail(id) {
     WHERE oi.order_id = ?
   `, [id]);
 
-  // Fetch service details for each item
+  // Fetch service details for each item (with code)
   for (const item of items) {
     const [services] = await pool.query(
-      'SELECT id, name, price, unit, active, created_at FROM services WHERE id = ?',
+      'SELECT id, code, name, price, unit, active, created_at FROM services WHERE id = ?',
       [item.service_id]
     );
     if (services.length > 0) {
@@ -158,9 +172,9 @@ async function findDetail(id) {
 
   order.items = items;
 
-  // Get payments for this order
+  // Get payments for this order (with code)
   const [payments] = await pool.query(
-    'SELECT id, order_id, amount, method, note, created_at FROM payments WHERE order_id = ? ORDER BY created_at ASC',
+    'SELECT id, code, order_id, amount, method, note, created_at FROM payments WHERE order_id = ? ORDER BY created_at ASC',
     [id]
   );
   order.payments = payments;
@@ -169,8 +183,24 @@ async function findDetail(id) {
 }
 
 /**
- * Create order with items (transaction)
+ * Find order detail by code (case-insensitive). Returns same shape as findDetail.
+ * @param {string} code - mis. 'ORD-260614-K7M2QF'
+ */
+async function findDetailByCode(code) {
+  if (typeof code !== 'string' || code.length === 0) return null;
+  const [rows] = await pool.query(
+    'SELECT id FROM orders WHERE code = ? LIMIT 1',
+    [code.toUpperCase()]
+  );
+  if (rows.length === 0) return null;
+  return findDetail(rows[0].id);
+}
+
+/**
+ * Create order with items (transaction).
+ * Auto-generate `code` (ORD-YYMMDD-XXXXXX) dengan retry on ER_DUP_ENTRY.
  * @param {object} data - {customer_id, user_id, items: [{service_id, quantity}]}
+ * @returns {Promise<number>} orderId
  */
 async function create(data) {
   const connection = await pool.getConnection();
@@ -193,13 +223,26 @@ async function create(data) {
       totalPrice += subtotal;
     }
 
-    // Insert order
-    const [orderResult] = await connection.query(
-      `INSERT INTO orders (customer_id, user_id, total_price, status, payment_status) VALUES (?, ?, ?, 'pending', 'unpaid')`,
-      [data.customer_id, data.user_id, totalPrice]
-    );
-
-    const orderId = orderResult.insertId;
+    // Insert order dengan code (retry on dup). ER_DUP_ENTRY pada satu statement
+    // tidak membatalkan transaction di InnoDB, jadi retry aman.
+    let orderId;
+    for (let attempt = 0; attempt < MAX_CODE_RETRY; attempt++) {
+      const orderCode = generateCode(CODE_PREFIX, { withDate: true });
+      try {
+        const [orderResult] = await connection.query(
+          `INSERT INTO orders (code, customer_id, user_id, total_price, status, payment_status) VALUES (?, ?, ?, ?, 'pending', 'unpaid')`,
+          [orderCode, data.customer_id, data.user_id, totalPrice]
+        );
+        orderId = orderResult.insertId;
+        break;
+      } catch (err) {
+        if (err.code === 'ER_DUP_ENTRY' && attempt < MAX_CODE_RETRY - 1) continue;
+        throw err;
+      }
+    }
+    if (orderId === undefined) {
+      throw new Error('Failed to generate unique order code after retries');
+    }
 
     // Insert order items
     for (const item of data.items) {
@@ -320,7 +363,7 @@ async function remove(id) {
 }
 
 /**
- * Get audit logs for order
+ * Get audit logs for order. Nested `user` object menyertakan `code`.
  * @param {number} orderId
  */
 async function getAuditLogs(orderId) {
@@ -337,10 +380,10 @@ async function getAuditLogs(orderId) {
     ORDER BY al.changed_at ASC
   `, [orderId]);
 
-  // Attach nested user object for each log
+  // Attach nested user object for each log (with code)
   for (const log of logs) {
     const [users] = await pool.query(
-      'SELECT id, username, role FROM users WHERE id = ?',
+      'SELECT id, code, username, role FROM users WHERE id = ?',
       [log.changed_by]
     );
     if (users.length > 0) {
@@ -354,6 +397,7 @@ async function getAuditLogs(orderId) {
 module.exports = {
   findAll,
   findDetail,
+  findDetailByCode,
   create,
   update,
   updateStatus,

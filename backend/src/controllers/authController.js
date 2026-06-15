@@ -64,9 +64,9 @@ async function login(req, res) {
       return errorResponse(res, 'Invalid credentials', 401);
     }
 
-    // Generate token
+    // Generate token (FASE 4: payload membawa `code`, bukan `id`)
     const token = generateToken({
-      id: user.id,
+      code: user.code,
       username: user.username,
       role: user.role
     });
@@ -74,7 +74,7 @@ async function login(req, res) {
     return successResponse(res, 'Login successful', {
       token,
       user: {
-        id: user.id,
+        code: user.code,
         username: user.username,
         role: user.role
       }
@@ -119,7 +119,7 @@ async function register(req, res) {
     const user = await findById(userId);
 
     return successResponse(res, 'User created successfully', {
-      id: user.id,
+      code: user.code,
       username: user.username,
       role: user.role
     }, 201);
@@ -143,7 +143,7 @@ async function me(req, res) {
     }
 
     return successResponse(res, 'User retrieved successfully', {
-      id: user.id,
+      code: user.code,
       username: user.username,
       role: user.role,
       created_at: user.created_at

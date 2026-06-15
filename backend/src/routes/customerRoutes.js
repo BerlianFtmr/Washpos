@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/auth');
+const { resolveIdParam } = require('../middleware/resolveIdParam');
 const {
   list,
   detail,
@@ -155,7 +156,7 @@ router.get('/', protect, list);
  *       404:
  *         description: Customer not found
  */
-router.get('/:id', protect, detail);
+router.get('/:id', protect, resolveIdParam('customers'), detail);
 
 /**
  * @swagger
@@ -240,7 +241,7 @@ router.post('/', protect, createCustomerValidation, createNew);
  *       422:
  *         description: Validation error
  */
-router.patch('/:id', protect, updateCustomerValidation, updateData);
+router.patch('/:id', protect, resolveIdParam('customers'), updateCustomerValidation, updateData);
 
 /**
  * @swagger
@@ -264,6 +265,6 @@ router.patch('/:id', protect, updateCustomerValidation, updateData);
  *       404:
  *         description: Customer not found
  */
-router.delete('/:id', protect, removeData);
+router.delete('/:id', protect, resolveIdParam('customers'), removeData);
 
 module.exports = router;

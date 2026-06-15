@@ -1,9 +1,17 @@
 /**
  * Payment SQL Queries
  * Query functions untuk payments table dengan auto-update payment_status order
+ *
+ * FASE 2: kolom `code` (PAY-YYMMDD-XXXXXX) di-SELECT di semua query;
+ * `findByCode` & `findByOrderCode` ditambahkan; `create` auto-generate code
+ * dengan retry on ER_DUP_ENTRY (di dalam transaction).
  */
 
 const pool = require('../config/database');
+const { generateCode } = require('../utils/codeGenerator');
+
+const CODE_PREFIX = 'PAY';
+const MAX_CODE_RETRY = 3;
 
 /**
  * Get all payments with filters
@@ -16,7 +24,9 @@ async function findAll(filters = {}, page = 1, limit = 10) {
   let query = `
     SELECT
       p.id,
+      p.code,
       p.order_id,
+      o.code AS order_code,
       p.amount,
       p.method,
       p.note,
@@ -62,14 +72,16 @@ async function findAll(filters = {}, page = 1, limit = 10) {
 }
 
 /**
- * Find payment by ID
+ * Find payment by ID.
  * @param {number} id
  */
 async function findById(id) {
   const [rows] = await pool.query(`
     SELECT
       p.id,
+      p.code,
       p.order_id,
+      o.code AS order_code,
       p.amount,
       p.method,
       p.note,
@@ -85,12 +97,39 @@ async function findById(id) {
 }
 
 /**
+ * Find payment by code (case-insensitive).
+ * @param {string} code - mis. 'PAY-260614-9F2K4M'
+ */
+async function findByCode(code) {
+  if (typeof code !== 'string' || code.length === 0) return null;
+  const [rows] = await pool.query(`
+    SELECT
+      p.id,
+      p.code,
+      p.order_id,
+      o.code AS order_code,
+      p.amount,
+      p.method,
+      p.note,
+      p.created_at,
+      o.total_price AS order_total_price,
+      o.payment_status AS order_payment_status
+    FROM payments p
+    JOIN orders o ON p.order_id = o.id
+    WHERE p.code = ?
+    LIMIT 1
+  `, [code.toUpperCase()]);
+
+  return rows[0];
+}
+
+/**
  * Get order for payment calculation
  * @param {number} orderId
  */
 async function getOrderForPayment(orderId) {
   const [rows] = await pool.query(
-    'SELECT id, total_price, payment_status FROM orders WHERE id = ?',
+    'SELECT id, code, total_price, payment_status FROM orders WHERE id = ?',
     [orderId]
   );
   return rows[0];
@@ -109,8 +148,10 @@ async function getTotalPaymentsForOrder(orderId) {
 }
 
 /**
- * Create payment dan auto-update payment_status order (transaction)
+ * Create payment dan auto-update payment_status order (transaction).
+ * Auto-generate `code` (PAY-YYMMDD-XXXXXX) dengan retry on ER_DUP_ENTRY.
  * @param {object} data - {order_id, amount, method, note}
+ * @returns {Promise<{paymentId: number, newPaymentStatus: string}>}
  */
 async function create(data) {
   const connection = await pool.getConnection();
@@ -125,6 +166,7 @@ async function create(data) {
     );
 
     if (orders.length === 0) {
+      await connection.rollback();
       throw new Error('Order not found');
     }
 
@@ -146,11 +188,27 @@ async function create(data) {
       newPaymentStatus = 'paid';
     }
 
-    // Insert payment
-    const [result] = await connection.query(
-      `INSERT INTO payments (order_id, amount, method, note) VALUES (?, ?, ?, ?)`,
-      [data.order_id, data.amount, data.method, data.note || null]
-    );
+    // Insert payment dengan code (retry on dup). Di MySQL/InnoDB, ER_DUP_ENTRY
+    // hanya me-rollback statement yg gagal, bukan seluruh transaction, sehingga
+    // aman untuk retry di dalam transaction yang sama.
+    let paymentId;
+    for (let attempt = 0; attempt < MAX_CODE_RETRY; attempt++) {
+      const payCode = generateCode(CODE_PREFIX, { withDate: true });
+      try {
+        const [result] = await connection.query(
+          `INSERT INTO payments (code, order_id, amount, method, note) VALUES (?, ?, ?, ?, ?)`,
+          [payCode, data.order_id, data.amount, data.method, data.note || null]
+        );
+        paymentId = result.insertId;
+        break;
+      } catch (err) {
+        if (err.code === 'ER_DUP_ENTRY' && attempt < MAX_CODE_RETRY - 1) continue;
+        throw err;
+      }
+    }
+    if (paymentId === undefined) {
+      throw new Error('Failed to generate unique payment code after retries');
+    }
 
     // Update order payment status
     await connection.query(
@@ -161,7 +219,7 @@ async function create(data) {
     await connection.commit();
 
     return {
-      paymentId: result.insertId,
+      paymentId,
       newPaymentStatus
     };
   } catch (error) {
@@ -299,6 +357,7 @@ async function remove(id) {
 module.exports = {
   findAll,
   findById,
+  findByCode,
   getOrderForPayment,
   getTotalPaymentsForOrder,
   create,

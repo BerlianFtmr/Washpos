@@ -32,7 +32,7 @@ export default function PaymentsPage() {
   // Filter state
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [filterOrderId, setFilterOrderId] = useState<number | ''>('');
+  const [filterOrderCode, setFilterOrderCode] = useState('');
   const [orderOptions, setOrderOptions] = useState<Order[]>([]);
 
   // Delete state
@@ -53,7 +53,7 @@ export default function PaymentsPage() {
         page: pagination.page,
         limit: pagination.limit,
       };
-      if (filterOrderId) params.order_id = filterOrderId;
+      if (filterOrderCode) params.order_code = filterOrderCode;
       const res = await paymentService.list(params);
       setPayments(res.data);
       setPagination(res.pagination);
@@ -62,7 +62,7 @@ export default function PaymentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [pagination.page, pagination.limit, filterOrderId]);
+  }, [pagination.page, pagination.limit, filterOrderCode]);
 
   useEffect(() => {
     fetchPayments();
@@ -85,8 +85,8 @@ export default function PaymentsPage() {
     if (!deleteTarget) return;
     setDeleteLoading(true);
     try {
-      await paymentService.delete(deleteTarget.id);
-      showSuccess(`Pembayaran #${deleteTarget.id} berhasil dihapus`);
+      await paymentService.delete(deleteTarget.code);
+      showSuccess(`Pembayaran ${deleteTarget.code} berhasil dihapus`);
       setDeleteTarget(null);
       fetchPayments();
     } catch {
@@ -97,12 +97,12 @@ export default function PaymentsPage() {
     }
   };
 
-  // Client-side search filter (search by ID payment or order)
+  // Client-side search filter (search by payment code, order code, or customer)
   const filteredPayments = search
     ? payments.filter(
         (p) =>
-          String(p.id).includes(search) ||
-          String(p.order_id).includes(search) ||
+          p.code.toLowerCase().includes(search.toLowerCase()) ||
+          (p.order?.code ?? '').toLowerCase().includes(search.toLowerCase()) ||
           (p.customer?.name ?? '').toLowerCase().includes(search.toLowerCase())
       )
     : payments;
@@ -113,22 +113,23 @@ export default function PaymentsPage() {
       header: 'ID',
       render: (row) => {
         const p = row as unknown as Payment;
-        return <span className="font-medium text-slate-600">#{p.id}</span>;
+        return <span className="font-medium text-slate-600">{p.code}</span>;
       },
     },
     {
-      key: 'order_id',
+      key: 'order',
       header: 'ID Order',
       render: (row) => {
         const p = row as unknown as Payment;
+        const orderRef = p.order?.code ?? p.order_code ?? '';
         return (
           /** Navigasi ke SCR-05: Detail Pesanan */
           <Link
-            href={`/orders/${p.order_id}`}
+            href={orderRef ? `/orders/${orderRef}` : '#'}
             onClick={(e) => e.stopPropagation()}
             className="font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
           >
-            #{p.order_id}
+            {orderRef || '-'}
           </Link>
         );
       },
@@ -192,7 +193,7 @@ export default function PaymentsPage() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      router.push(`/payments/${p.id}`);
+                      router.push(`/payments/${p.code}`);
                     }}
                     className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                     title="Edit Pembayaran"
@@ -247,17 +248,17 @@ export default function PaymentsPage() {
           <div className="relative min-w-[200px]">
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <select
-              value={filterOrderId}
+              value={filterOrderCode}
               onChange={(e) => {
-                setFilterOrderId(e.target.value ? Number(e.target.value) : '');
+                setFilterOrderCode(e.target.value);
                 setPagination((prev) => ({ ...prev, page: 1 }));
               }}
               className="w-full pl-10 pr-8 py-2 appearance-none border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
             >
               <option value="">Semua Order</option>
               {orderOptions.map((o) => (
-                <option key={o.id} value={o.id}>
-                  #{o.id} — {o.customer?.name ?? 'Pelanggan'}
+                <option key={o.code} value={o.code}>
+                  {o.code} — {o.customer?.name ?? 'Pelanggan'}
                 </option>
               ))}
             </select>
@@ -284,7 +285,7 @@ export default function PaymentsPage() {
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         title="Hapus Pembayaran?"
-        message={`Apakah Anda yakin ingin menghapus pembayaran #${deleteTarget?.id ?? ''} sebesar ${deleteTarget ? formatRupiah(deleteTarget.amount) : ''}? Status pembayaran pada pesanan #${deleteTarget?.order_id ?? ''} akan dikalkulasi ulang.`}
+        message={`Apakah Anda yakin ingin menghapus pembayaran ${deleteTarget?.code ?? ''} sebesar ${deleteTarget ? formatRupiah(deleteTarget.amount) : ''}? Status pembayaran pada pesanan ${deleteTarget?.order?.code ?? deleteTarget?.order_code ?? ''} akan dikalkulasi ulang.`}
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}

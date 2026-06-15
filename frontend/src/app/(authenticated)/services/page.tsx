@@ -30,7 +30,7 @@ export default function ServicesPage() {
   const [deleting, setDeleting] = useState(false);
 
   // Toggle status state
-  const [togglingId, setTogglingId] = useState<number | null>(null);
+  const [togglingCode, setTogglingCode] = useState<string | null>(null);
 
   const fetchServices = useCallback(async () => {
     setLoading(true);
@@ -64,15 +64,15 @@ export default function ServicesPage() {
 
   /** Toggle active/nonactive for a service (Admin only) */
   const handleToggleStatus = async (service: Service) => {
-    setTogglingId(service.id);
+    setTogglingCode(service.code);
     try {
-      await serviceService.update(service.id, { active: !service.active });
+      await serviceService.update(service.code, { active: !service.active });
       showSuccess(`Layanan "${service.name}" berhasil ${service.active ? 'dinonaktifkan' : 'diaktifkan'}`);
       fetchServices();
     } catch {
       showError('Gagal mengubah status layanan');
     } finally {
-      setTogglingId(null);
+      setTogglingCode(null);
     }
   };
 
@@ -81,7 +81,7 @@ export default function ServicesPage() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await serviceService.delete(deleteTarget.id);
+      await serviceService.delete(deleteTarget.code);
       showSuccess(`Layanan "${deleteTarget.name}" berhasil dihapus`);
       setDeleteTarget(null);
       fetchServices();
@@ -98,7 +98,7 @@ export default function ServicesPage() {
       header: 'ID',
       render: (row) => {
         const s = row as unknown as Service;
-        return <span className="font-medium text-slate-500">#{s.id}</span>;
+        return <span className="font-medium text-slate-500">{s.code}</span>;
       },
     },
     {
@@ -155,7 +155,7 @@ export default function ServicesPage() {
             className: 'text-center',
             render: (row: Record<string, unknown>) => {
               const s = row as unknown as Service;
-              const isToggling = togglingId === s.id;
+              const isToggling = togglingCode === s.code;
               return (
                 <div className="flex items-center justify-center gap-1">
                   {/* Toggle Aktif/Nonaktif */}
@@ -174,7 +174,7 @@ export default function ServicesPage() {
 
                   {/* Navigasi ke SCR-09: Form Layanan — mode edit */}
                   <button
-                    onClick={(e) => { e.stopPropagation(); router.push(`/services/${s.id}/edit`); }}
+                    onClick={(e) => { e.stopPropagation(); router.push(`/services/${s.code}/edit`); }}
                     className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                     title="Edit Data"
                   >

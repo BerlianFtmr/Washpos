@@ -12,7 +12,7 @@ import { showSuccess, showError } from '@/components/ui/Toast';
 export default function EditCustomerPage() {
   const router = useRouter();
   const params = useParams();
-  const customerId = Number(params?.id);
+  const customerCode = (params?.code as string) ?? '';
 
   const [form, setForm] = useState({ name: '', whatsapp: '', address: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -20,14 +20,14 @@ export default function EditCustomerPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!customerId || isNaN(customerId)) {
-      showError('ID pelanggan tidak valid');
+    if (!customerCode) {
+      showError('Kode pelanggan tidak valid');
       router.push('/customers');
       return;
     }
 
     customerService
-      .getById(customerId)
+      .getById(customerCode)
       .then((data) => {
         setForm({
           name: data.name,
@@ -40,7 +40,7 @@ export default function EditCustomerPage() {
         router.push('/customers');
       })
       .finally(() => setLoading(false));
-  }, [customerId, router]);
+  }, [customerCode, router]);
 
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
@@ -64,7 +64,7 @@ export default function EditCustomerPage() {
 
     setSubmitting(true);
     try {
-      await customerService.update(customerId, {
+      await customerService.update(customerCode, {
         name: form.name.trim(),
         whatsapp: form.whatsapp.trim(),
         address: form.address.trim() || undefined,
@@ -92,7 +92,7 @@ export default function EditCustomerPage() {
       <Breadcrumb
         items={[
           { label: 'Pelanggan', href: '/customers' },
-          { label: `Edit #${customerId}` },
+          { label: `Edit ${customerCode}` },
         ]}
       />
 
@@ -101,7 +101,7 @@ export default function EditCustomerPage() {
           <div className="p-5 border-b border-slate-200 bg-slate-50/50">
             <h1 className="text-xl font-bold text-slate-800">Edit Pelanggan</h1>
             <p className="text-sm text-slate-500 mt-1">
-              Perbarui data pelanggan #{customerId}.
+              Perbarui data pelanggan {customerCode}.
             </p>
           </div>
 

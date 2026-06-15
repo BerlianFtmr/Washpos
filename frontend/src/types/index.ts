@@ -16,17 +16,17 @@ export type PaymentMethod = 'cash' | 'transfer' | 'ewallet';
 
 export type ServiceUnit = 'kg' | 'piece' | 'meter' | 'pair';
 
-// ─── Entities ──────────────────────────────────────────────────────
+// ─── Entities (FASE 4: public API uses `code` only; internal `id` removed) ───
 
 export interface User {
-  id: number;
+  code: string;
   username: string;
   role: UserRole;
   created_at: string;
 }
 
 export interface Customer {
-  id: number;
+  code: string;
   name: string;
   whatsapp: string;
   address: string | null;
@@ -35,7 +35,7 @@ export interface Customer {
 }
 
 export interface Service {
-  id: number;
+  code: string;
   name: string;
   price: number;
   unit: ServiceUnit;
@@ -53,9 +53,7 @@ export interface OrderItem {
 }
 
 export interface Order {
-  id: number;
-  customer_id: number;
-  user_id: number;
+  code: string;
   status: OrderStatus;
   payment_status: PaymentStatus;
   total_price: number;
@@ -70,14 +68,17 @@ export interface Order {
 }
 
 export interface Payment {
-  id: number;
-  order_id: number;
+  code: string;
   amount: number;
   method: PaymentMethod;
   note: string | null;
   created_at: string;
-  order?: Order;
+  // Denormalized display fields (list endpoint)
+  order_code?: string;
+  order_total_price?: number;
+  order_payment_status?: PaymentStatus;
   customer?: Customer;
+  order?: Order;
 }
 
 export interface AuditLog {
@@ -93,7 +94,7 @@ export interface AuditLog {
 // ─── Auth ──────────────────────────────────────────────────────────
 
 export interface AuthUser {
-  id: number;
+  code: string;
   username: string;
   role: UserRole;
 }
@@ -138,16 +139,61 @@ export interface DashboardStats {
   recentOrders: Order[];
 }
 
+// ─── Income Recap (SCR-15) ────────────────────────────────────────
+
+export type RecapPeriod = 'week' | 'month' | 'year';
+
+export type RecapGranularity = 'day' | 'month';
+
+export interface RecapRange {
+  startDate: string;
+  endDate: string;
+}
+
+/** Metrik dengan perbandingan periode sebelumnya. growthPct null saat previous = 0. */
+export interface RecapMetric {
+  current: number;
+  previous: number;
+  growthPct: number | null;
+}
+
+export interface RecapSummary {
+  revenue: RecapMetric;
+  orderValue: RecapMetric;
+  transactions: RecapMetric;
+  orders: RecapMetric;
+  avgPerTransaction: number;
+  avgPerOrder: number;
+}
+
+export interface RecapBreakdownRow {
+  label: string;
+  date: string;
+  revenue: number;
+  transactions: number;
+  orderValue: number;
+  orders: number;
+}
+
+export interface IncomeRecap {
+  period: RecapPeriod;
+  granularity: RecapGranularity;
+  current: RecapRange;
+  previous: RecapRange;
+  summary: RecapSummary;
+  breakdown: RecapBreakdownRow[];
+}
+
 // ─── Request Payloads ──────────────────────────────────────────────
 
 export interface CreateOrderPayload {
-  customer_id: number;
-  items: Array<{ service_id: number; quantity: number }>;
+  customer_code: string;
+  items: Array<{ service_code: string; quantity: number }>;
   notes?: string;
 }
 
 export interface UpdateOrderPayload {
-  customer_id?: number;
+  customer_code?: string;
   notes?: string;
 }
 
@@ -188,7 +234,7 @@ export interface UpdateServicePayload {
 }
 
 export interface CreatePaymentPayload {
-  order_id: number;
+  order_code: string;
   amount: number;
   method: PaymentMethod;
   note?: string;
@@ -221,7 +267,7 @@ export interface PaginationParams {
 
 export interface OrderQueryParams extends PaginationParams {
   status?: OrderStatus;
-  customer_id?: number;
+  customer_code?: string;
 }
 
 export interface CustomerQueryParams extends PaginationParams {
@@ -229,7 +275,7 @@ export interface CustomerQueryParams extends PaginationParams {
 }
 
 export interface PaymentQueryParams extends PaginationParams {
-  order_id?: number;
+  order_code?: string;
 }
 
 export interface ServiceQueryParams extends PaginationParams {

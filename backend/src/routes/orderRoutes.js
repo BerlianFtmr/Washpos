@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/auth');
 const { authorize } = require('../middleware/role');
+const { resolveIdParam } = require('../middleware/resolveIdParam');
 const {
   list,
   detail,
@@ -214,7 +215,7 @@ router.get('/', protect, list);
  *       404:
  *         description: Order not found
  */
-router.get('/:id', protect, detail);
+router.get('/:id', protect, resolveIdParam('orders'), detail);
 
 /**
  * @swagger
@@ -285,7 +286,7 @@ router.post('/', protect, createOrderValidation, createNew);
  *       422:
  *         description: Validation error
  */
-router.post('/:id/payments', protect, createPaymentValidation, createForOrder);
+router.post('/:id/payments', protect, resolveIdParam('orders'), createPaymentValidation, createForOrder);
 
 /**
  * @swagger
@@ -318,7 +319,7 @@ router.post('/:id/payments', protect, createPaymentValidation, createForOrder);
  *       422:
  *         description: Validation error
  */
-router.patch('/:id', protect, updateOrderValidation, updateData);
+router.patch('/:id', protect, resolveIdParam('orders'), updateOrderValidation, updateData);
 
 /**
  * @swagger
@@ -353,7 +354,7 @@ router.patch('/:id', protect, updateOrderValidation, updateData);
  *       422:
  *         description: Validation error
  */
-router.patch('/:id/status', protect, updateStatusValidation, updateStatusHandler);
+router.patch('/:id/status', protect, resolveIdParam('orders'), updateStatusValidation, updateStatusHandler);
 
 /**
  * @swagger
@@ -378,6 +379,6 @@ router.patch('/:id/status', protect, updateStatusValidation, updateStatusHandler
  *       404:
  *         description: Order not found
  */
-router.delete('/:id', protect, authorize('admin'), removeData);
+router.delete('/:id', protect, authorize('admin'), resolveIdParam('orders'), removeData);
 
 module.exports = router;

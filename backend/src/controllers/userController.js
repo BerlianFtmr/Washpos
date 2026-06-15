@@ -4,9 +4,10 @@
  */
 
 const { body, validationResult } = require('express-validator');
-const { findAll, findById, create, update, remove, searchByUsername } = require('../queries/userQueries');
+const { findAll, findById, findByUsername, create, update, remove, searchByUsername } = require('../queries/userQueries');
 const { hashPassword } = require('../utils/hash');
 const { successResponse, errorResponse, validationError } = require('../utils/response');
+const { sanitizeUser } = require('../utils/sanitize');
 
 /**
  * Validation rules
@@ -53,7 +54,7 @@ async function list(req, res) {
 
     const result = await findAll(page, limit);
 
-    return successResponse(res, 'Users retrieved successfully', result.users, 200, {
+    return successResponse(res, 'Users retrieved successfully', result.users.map(sanitizeUser), 200, {
       pagination: result.pagination
     });
   } catch (error) {
@@ -76,7 +77,7 @@ async function searchByUsernameHandler(req, res) {
 
     const users = await searchByUsername(username);
 
-    return successResponse(res, 'Users found', users, 200);
+    return successResponse(res, 'Users found', users.map(sanitizeUser), 200);
   } catch (error) {
     console.error('Search users error:', error);
     return errorResponse(res, 'Search failed', 500);
@@ -96,7 +97,7 @@ async function detail(req, res) {
       return errorResponse(res, 'User not found', 404);
     }
 
-    return successResponse(res, 'User retrieved successfully', user);
+    return successResponse(res, 'User retrieved successfully', sanitizeUser(user));
   } catch (error) {
     console.error('Get user error:', error);
     return errorResponse(res, 'Failed to retrieve user', 500);
@@ -117,7 +118,7 @@ async function createNew(req, res) {
     const { username, password, role } = req.body;
 
     // Check if username exists
-    const existing = await findById(username);
+    const existing = await findByUsername(username);
     if (existing) {
       return errorResponse(res, 'Username already exists', 400);
     }
@@ -125,7 +126,7 @@ async function createNew(req, res) {
     // Hash password
     const hashedPassword = await hashPassword(password);
 
-    // Create user
+    // Create user (auto-generate USR-XXXXXX)
     const userId = await create({
       username,
       password: hashedPassword,
@@ -135,7 +136,7 @@ async function createNew(req, res) {
     const user = await findById(userId);
 
     return successResponse(res, 'User created successfully', {
-      id: user.id,
+      code: user.code,
       username: user.username,
       role: user.role
     }, 201);
@@ -176,7 +177,7 @@ async function updateData(req, res) {
     const updated = await findById(id);
 
     return successResponse(res, 'User updated successfully', {
-      id: updated.id,
+      code: updated.code,
       username: updated.username,
       role: updated.role
     });
@@ -201,7 +202,7 @@ async function removeData(req, res) {
     }
 
     // Prevent deleting yourself
-    if (parseInt(id) === req.user.id) {
+    if (id === req.user.id) {
       return errorResponse(res, 'Cannot delete yourself', 400);
     }
 

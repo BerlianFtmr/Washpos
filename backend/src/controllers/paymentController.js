@@ -6,6 +6,8 @@
 const { body, validationResult } = require('express-validator');
 const { findAll, findById, getOrderForPayment, getTotalPaymentsForOrder, create, update, remove } = require('../queries/paymentQueries');
 const { successResponse, errorResponse, validationError } = require('../utils/response');
+const { resolveCodeToId } = require('../utils/codeResolver');
+const { sanitizePayment } = require('../utils/sanitize');
 
 const VALID_METHODS = ['cash', 'transfer', 'ewallet'];
 
@@ -38,16 +40,20 @@ const updatePaymentValidation = [
  */
 async function list(req, res) {
   try {
-    const filters = {
-      order_id: req.query.order_id ? parseInt(req.query.order_id) : undefined
-    };
+    const filters = {};
+
+    // Filter by order: order_code (resolve ke id internal)
+    if (req.query.order_code) {
+      const oid = await resolveCodeToId('orders', req.query.order_code);
+      if (oid != null) filters.order_id = oid;
+    }
 
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
 
     const result = await findAll(filters, page, limit);
 
-    return successResponse(res, 'Payments retrieved successfully', result.payments, 200, {
+    return successResponse(res, 'Payments retrieved successfully', result.payments.map(sanitizePayment), 200, {
       pagination: result.pagination
     });
   } catch (error) {
@@ -69,7 +75,7 @@ async function detail(req, res) {
       return errorResponse(res, 'Payment not found', 404);
     }
 
-    return successResponse(res, 'Payment retrieved successfully', payment);
+    return successResponse(res, 'Payment retrieved successfully', sanitizePayment(payment));
   } catch (error) {
     console.error('Get payment error:', error);
     return errorResponse(res, 'Failed to retrieve payment', 500);
@@ -106,10 +112,10 @@ async function createForOrder(req, res) {
 
     const payment = await findById(result.paymentId);
 
-    return successResponse(res, 'Payment created successfully', {
+    return successResponse(res, 'Payment created successfully', sanitizePayment({
       ...payment,
       order_payment_status: result.newPaymentStatus
-    }, 201);
+    }), 201);
   } catch (error) {
     console.error('Create payment error:', error);
 
@@ -146,7 +152,7 @@ async function updateData(req, res) {
 
     const updated = await findById(id);
 
-    return successResponse(res, 'Payment updated successfully', updated);
+    return successResponse(res, 'Payment updated successfully', sanitizePayment(updated));
   } catch (error) {
     console.error('Update payment error:', error);
     return errorResponse(res, 'Failed to update payment', 500);

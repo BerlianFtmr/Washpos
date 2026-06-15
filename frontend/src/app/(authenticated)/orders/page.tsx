@@ -54,7 +54,7 @@ export default function OrdersPage() {
         limit: pagination.limit,
       };
       if (statusFilter) params.status = statusFilter;
-      if (customerFilter) params.customer_id = Number(customerFilter);
+      if (customerFilter) params.customer_code = customerFilter;
       const res = await orderService.list(params);
       setOrders(res.data);
       setPagination(res.pagination);
@@ -76,7 +76,7 @@ export default function OrdersPage() {
   /** Navigasi ke SCR-05: Detail Pesanan */
   const handleRowClick = (row: Record<string, unknown>) => {
     const order = row as unknown as Order;
-    router.push(`/orders/${order.id}`);
+    router.push(`/orders/${order.code}`);
   };
 
   const columns: Column<Record<string, unknown>>[] = [
@@ -85,7 +85,7 @@ export default function OrdersPage() {
       header: 'ID Order',
       render: (row) => {
         const order = row as unknown as Order;
-        return <span className="font-medium text-blue-600">#{order.id}</span>;
+        return <span className="font-medium text-blue-600">{order.code}</span>;
       },
     },
     {
@@ -155,7 +155,7 @@ export default function OrdersPage() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              router.push(`/orders/${order.id}`);
+              router.push(`/orders/${order.code}`);
             }}
             className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
             title="Lihat Detail"
@@ -225,7 +225,7 @@ export default function OrdersPage() {
             >
               <option value="">Semua Pelanggan</option>
               {customers.map((c) => (
-                <option key={c.id} value={String(c.id)}>{c.name}</option>
+                <option key={c.code} value={c.code}>{c.name}</option>
               ))}
             </select>
           </div>

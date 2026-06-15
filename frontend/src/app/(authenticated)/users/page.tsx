@@ -83,7 +83,7 @@ export default function UsersPage() {
     if (!deleteTarget) return;
     setDeleteLoading(true);
     try {
-      await userService.delete(deleteTarget.id);
+      await userService.delete(deleteTarget.code);
       showSuccess(`Pengguna "${deleteTarget.username}" berhasil dihapus`);
       setDeleteTarget(null);
       fetchUsers();
@@ -101,7 +101,7 @@ export default function UsersPage() {
       header: 'ID',
       render: (row) => {
         const u = row as unknown as User;
-        return <span className="font-medium text-slate-600">#{u.id}</span>;
+        return <span className="font-medium text-slate-600">{u.code}</span>;
       },
     },
     {
@@ -109,7 +109,7 @@ export default function UsersPage() {
       header: 'Username',
       render: (row) => {
         const u = row as unknown as User;
-        const isCurrentUser = !!currentUser && u.id === currentUser.id;
+        const isCurrentUser = !!currentUser && u.code === currentUser.code;
         return (
           <div className="flex items-center gap-2">
             <span className="font-semibold text-slate-800">{u.username}</span>
@@ -144,14 +144,14 @@ export default function UsersPage() {
       className: 'text-center',
       render: (row) => {
         const u = row as unknown as User;
-        const isCurrentUser = !!currentUser && u.id === currentUser.id;
+        const isCurrentUser = !!currentUser && u.code === currentUser.code;
         return (
           <div className="flex items-center justify-center gap-1">
             {/* Navigasi ke SCR-13: Form Pengguna (edit mode) */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                router.push(`/users/${u.id}/edit`);
+                router.push(`/users/${u.code}/edit`);
               }}
               className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
               title="Edit Pengguna"

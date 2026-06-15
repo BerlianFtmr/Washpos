@@ -17,7 +17,7 @@ import { formatRupiah, formatDate } from '@/lib/format';
 export default function PaymentDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const paymentId = Number(params.id);
+  const paymentCode = (params.code as string) ?? '';
   /** P6-02: Halaman admin-only — redirect pegawai ke dashboard */
   const { loading: authLoading, authorized } = useAdminGuard();
 
@@ -42,11 +42,13 @@ export default function PaymentDetailPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const pay = await paymentService.getById(paymentId);
+      const pay = await paymentService.getById(paymentCode);
       setPayment(pay);
 
-      // Fetch related order for payment status and totals
-      const ord = await orderService.getById(pay.order_id);
+      // Fetch related order for payment status and totals.
+      const orderRef = pay.order?.code ?? pay.order_code ?? '';
+      if (!orderRef) throw new Error('missing order reference');
+      const ord = await orderService.getById(orderRef);
       setOrder(ord);
 
       // Initialize form with current payment data
@@ -61,7 +63,7 @@ export default function PaymentDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [paymentId, router]);
+  }, [paymentCode, router]);
 
   useEffect(() => {
     fetchData();
@@ -75,7 +77,7 @@ export default function PaymentDetailPage() {
   const orderTotal = order?.total_price ?? 0;
   // Total payments from other records (excluding current payment)
   const otherPaymentsTotal =
-    order?.payments?.filter((p) => p.id !== paymentId).reduce((sum, p) => sum + p.amount, 0) ?? 0;
+    order?.payments?.filter((p) => p.code !== paymentCode).reduce((sum, p) => sum + p.amount, 0) ?? 0;
   const currentAmount = Number(formData.amount) || 0;
   const totalPaid = otherPaymentsTotal + currentAmount;
   const remaining = Math.max(0, orderTotal - totalPaid);
@@ -102,7 +104,7 @@ export default function PaymentDetailPage() {
 
     setSubmitting(true);
     try {
-      await paymentService.update(paymentId, {
+      await paymentService.update(paymentCode, {
         amount: Number(formData.amount),
         method: formData.method,
         note: formData.note || undefined,
@@ -119,8 +121,8 @@ export default function PaymentDetailPage() {
   const handleDelete = async () => {
     setDeleteLoading(true);
     try {
-      await paymentService.delete(paymentId);
-      showSuccess(`Pembayaran #${paymentId} berhasil dihapus`);
+      await paymentService.delete(paymentCode);
+      showSuccess(`Pembayaran ${paymentCode} berhasil dihapus`);
       router.push('/payments');
     } catch {
       showError('Gagal menghapus pembayaran');
@@ -170,7 +172,7 @@ export default function PaymentDetailPage() {
                 <Receipt size={24} />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-slate-900">Pembayaran #{payment.id}</h1>
+                <h1 className="text-xl font-bold text-slate-900">Pembayaran {payment.code}</h1>
                 <p className="text-sm text-slate-500">Tercatat pada: {formatDate(payment.created_at)}</p>
               </div>
             </div>
@@ -182,10 +184,10 @@ export default function PaymentDetailPage() {
                 </p>
                 {/* Navigasi ke SCR-05: Detail Pesanan */}
                 <Link
-                  href={`/orders/${payment.order_id}`}
+                  href={`/orders/${payment.order?.code ?? payment.order_code ?? ''}`}
                   className="font-bold text-blue-600 hover:underline flex items-center gap-1"
                 >
-                  #{payment.order_id}
+                  {payment.order?.code ?? payment.order_code ?? '-'}
                 </Link>
               </div>
               <div className="sm:text-right">
@@ -331,7 +333,7 @@ export default function PaymentDetailPage() {
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         title="Hapus Pembayaran?"
-        message={`Apakah Anda yakin ingin menghapus pembayaran #${paymentId}? Status pembayaran pada pesanan #${payment.order_id} akan dikalkulasi ulang dan dapat berubah.`}
+        message={`Apakah Anda yakin ingin menghapus pembayaran ${paymentCode}? Status pembayaran pada pesanan ${payment.order?.code ?? payment.order_code ?? ''} akan dikalkulasi ulang dan dapat berubah.`}
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
         onConfirm={handleDelete}

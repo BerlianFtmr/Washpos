@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/auth');
 const { authorize } = require('../middleware/role');
+const { resolveIdParam } = require('../middleware/resolveIdParam');
 const {
   list,
   detail,
@@ -167,7 +168,7 @@ router.get('/', protect, list);
  *       404:
  *         description: Payment not found
  */
-router.get('/:id', protect, detail);
+router.get('/:id', protect, resolveIdParam('payments'), detail);
 
 /**
  * @swagger
@@ -214,7 +215,7 @@ router.get('/:id', protect, detail);
  *       422:
  *         description: Validation error
  */
-router.patch('/:id', protect, authorize('admin'), updatePaymentValidation, updateData);
+router.patch('/:id', protect, authorize('admin'), resolveIdParam('payments'), updatePaymentValidation, updateData);
 
 /**
  * @swagger
@@ -240,6 +241,6 @@ router.patch('/:id', protect, authorize('admin'), updatePaymentValidation, updat
  *       404:
  *         description: Payment not found
  */
-router.delete('/:id', protect, authorize('admin'), removeData);
+router.delete('/:id', protect, authorize('admin'), resolveIdParam('payments'), removeData);
 
 module.exports = router;
