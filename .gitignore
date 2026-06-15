@@ -182,6 +182,7 @@ logs/
 *.sqlite
 *.sqlite3
 *.db
+backups/
 .sass-cache/
 .eslintcache
 .stylelintcache
