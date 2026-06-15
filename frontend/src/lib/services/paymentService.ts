@@ -12,19 +12,19 @@ export const paymentService = {
     return api.getPaginated<Payment>('/payments', params as Record<string, string | number | undefined>);
   },
 
-  getById(id: number) {
-    return api.get<Payment>(`/payments/${id}`);
+  getById(code: string) {
+    return api.get<Payment>(`/payments/${code}`);
   },
 
   create(payload: CreatePaymentPayload) {
     return api.post<Payment>('/payments', payload);
   },
 
-  update(id: number, payload: UpdatePaymentPayload) {
-    return api.patch<Payment>(`/payments/${id}`, payload);
+  update(code: string, payload: UpdatePaymentPayload) {
+    return api.patch<Payment>(`/payments/${code}`, payload);
   },
 
-  delete(id: number) {
-    return api.delete<void>(`/payments/${id}`);
+  delete(code: string) {
+    return api.delete<void>(`/payments/${code}`);
   },
 };

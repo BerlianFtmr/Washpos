@@ -250,13 +250,13 @@ export default function DashboardPage() {
                 <tbody className="divide-y divide-slate-100">
                   {stats.recentOrders.map((order) => (
                     <tr
-                      key={order.id}
+                      key={order.code}
                       /** Navigasi ke SCR-05: Detail Pesanan */
-                      onClick={() => router.push(`/orders/${order.id}`)}
+                      onClick={() => router.push(`/orders/${order.code}`)}
                       className="hover:bg-blue-50 cursor-pointer transition-colors"
                     >
                       <td className="px-5 py-3 font-medium text-blue-600">
-                        #{order.id}
+                        {order.code}
                       </td>
                       <td className="px-5 py-3 text-slate-800">
                         {order.customer?.name ?? '-'}

@@ -27,7 +27,7 @@ interface FormErrors {
 export default function EditServicePage() {
   const router = useRouter();
   const params = useParams();
-  const serviceId = Number(params.id);
+  const serviceCode = (params?.code as string) ?? '';
   /** P6-02: Halaman admin-only — redirect pegawai ke dashboard */
   const { loading: authLoading, authorized } = useAdminGuard();
 
@@ -45,7 +45,7 @@ export default function EditServicePage() {
   useEffect(() => {
     async function fetchService() {
       try {
-        const service = await serviceService.getById(serviceId);
+        const service = await serviceService.getById(serviceCode);
         setFormData({
           name: service.name,
           price: String(service.price),
@@ -60,7 +60,7 @@ export default function EditServicePage() {
       }
     }
     fetchService();
-  }, [serviceId, router]);
+  }, [serviceCode, router]);
 
   // P6-02: Admin-only guard — render nothing (redirect handled by hook)
   if (authLoading) return <PageLoading />;
@@ -90,7 +90,7 @@ export default function EditServicePage() {
     if (!validate()) return;
     setSubmitting(true);
     try {
-      await serviceService.update(serviceId, {
+      await serviceService.update(serviceCode, {
         name: formData.name.trim(),
         price: Number(formData.price),
         unit: formData.unit,
@@ -116,7 +116,7 @@ export default function EditServicePage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'Layanan', href: '/services' }, { label: `Edit #${serviceId}` }]} />
+      <Breadcrumb items={[{ label: 'Layanan', href: '/services' }, { label: `Edit ${serviceCode}` }]} />
 
       <div className="max-w-2xl mx-auto">
         {/* Header */}

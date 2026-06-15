@@ -12,19 +12,19 @@ export const serviceService = {
     return api.getPaginated<Service>('/services', params as Record<string, string | number | boolean | undefined>);
   },
 
-  getById(id: number) {
-    return api.get<Service>(`/services/${id}`);
+  getById(code: string) {
+    return api.get<Service>(`/services/${code}`);
   },
 
   create(payload: CreateServicePayload) {
     return api.post<Service>('/services', payload);
   },
 
-  update(id: number, payload: UpdateServicePayload) {
-    return api.patch<Service>(`/services/${id}`, payload);
+  update(code: string, payload: UpdateServicePayload) {
+    return api.patch<Service>(`/services/${code}`, payload);
   },
 
-  delete(id: number) {
-    return api.delete<void>(`/services/${id}`);
+  delete(code: string) {
+    return api.delete<void>(`/services/${code}`);
   },
 };

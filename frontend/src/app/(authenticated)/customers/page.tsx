@@ -71,14 +71,14 @@ export default function CustomersPage() {
   /** Navigasi ke SCR-03: Daftar Pesanan terfilter per pelanggan */
   const handleRowClick = (row: Record<string, unknown>) => {
     const customer = row as unknown as Customer;
-    router.push(`/orders?customer_id=${customer.id}`);
+    router.push(`/orders?customer_code=${customer.code}`);
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleteLoading(true);
     try {
-      await customerService.delete(deleteTarget.id);
+      await customerService.delete(deleteTarget.code);
       showSuccess(`Pelanggan "${deleteTarget.name}" berhasil dihapus`);
       setDeleteTarget(null);
       fetchCustomers();
@@ -96,7 +96,7 @@ export default function CustomersPage() {
       header: 'ID',
       render: (row) => {
         const c = row as unknown as Customer;
-        return <span className="font-medium text-slate-600">#{c.id}</span>;
+        return <span className="font-medium text-slate-600">{c.code}</span>;
       },
     },
     {
@@ -164,7 +164,7 @@ export default function CustomersPage() {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                router.push(`/customers/${c.id}/edit`);
+                router.push(`/customers/${c.code}/edit`);
               }}
               className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
               title="Edit Pelanggan"

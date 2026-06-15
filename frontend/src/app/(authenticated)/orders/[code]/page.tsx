@@ -34,7 +34,7 @@ const paymentMethodOptions: { value: PaymentMethod; label: string }[] = [
   { value: 'ewallet', label: 'E-Wallet' },
 ];
 
-export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function OrderDetailPage({ params }: { params: Promise<{ code: string }> }) {
   const router = useRouter();
   const { isAdmin } = useAuth();
 
@@ -54,22 +54,22 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [formPayment, setFormPayment] = useState({ amount: '', method: 'cash' as PaymentMethod, note: '' });
 
   // Form: Edit
-  const [formEdit, setFormEdit] = useState({ customerId: '', notes: '' });
+  const [formEdit, setFormEdit] = useState({ customerCode: '', notes: '' });
 
   // Unwrap params
   useEffect(() => {
-    params.then((p) => setOrderId(p.id));
+    params.then((p) => setOrderId(p.code));
   }, [params]);
 
   const fetchOrder = useCallback(async () => {
     if (!orderId) return;
     setLoading(true);
     try {
-      const data = await orderService.getById(Number(orderId));
+      const data = await orderService.getById(orderId);
       setOrder(data);
       // Pre-fill form defaults
       setFormStatus(data.status);
-      setFormEdit({ customerId: String(data.customer_id), notes: data.notes ?? '' });
+      setFormEdit({ customerCode: data.customer?.code ?? '', notes: data.notes ?? '' });
     } catch {
       showError('Gagal memuat data pesanan');
     } finally {
@@ -100,7 +100,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const submitStatusChange = async () => {
     setModalLoading(true);
     try {
-      await orderService.updateStatus(order.id, { status: formStatus });
+      await orderService.updateStatus(order.code, { status: formStatus });
       showSuccess('Status pesanan berhasil diubah');
       setActiveModal(null);
       fetchOrder();
@@ -116,7 +116,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     if (!amount || amount <= 0) { showError('Jumlah pembayaran harus lebih dari 0'); return; }
     setModalLoading(true);
     try {
-      await orderService.addPayment(order.id, {
+      await orderService.addPayment(order.code, {
         amount,
         method: formPayment.method,
         note: formPayment.note.trim() || undefined,
@@ -135,8 +135,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const submitEdit = async () => {
     setModalLoading(true);
     try {
-      await orderService.update(order.id, {
-        customer_id: Number(formEdit.customerId),
+      await orderService.update(order.code, {
+        customer_code: formEdit.customerCode || undefined,
         notes: formEdit.notes.trim() || undefined,
       });
       showSuccess('Pesanan berhasil diperbarui');
@@ -152,7 +152,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const submitDelete = async () => {
     setModalLoading(true);
     try {
-      await orderService.delete(order.id);
+      await orderService.delete(order.code);
       showSuccess('Pesanan berhasil dihapus');
       /** Navigasi ke SCR-03: Daftar Pesanan */
       router.push('/orders');
@@ -169,7 +169,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       <Breadcrumb items={[
         { label: 'Dashboard', href: '/' },
         { label: 'Pesanan', href: '/orders' },
-        { label: `Detail #${order.id}` },
+        { label: `Detail ${order.code}` },
       ]} />
 
       <div className="max-w-6xl mx-auto space-y-6">
@@ -177,7 +177,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-2">
-              <h1 className="text-2xl font-bold text-slate-900">#{order.id}</h1>
+              <h1 className="text-2xl font-bold text-slate-900">{order.code}</h1>
               <div className="flex gap-2">
                 <StatusBadge variant="order" value={order.status} />
                 <StatusBadge variant="payment" value={order.payment_status} />
@@ -500,13 +500,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Ganti Pelanggan</label>
             <select
-              value={formEdit.customerId}
-              onChange={(e) => setFormEdit({ ...formEdit, customerId: e.target.value })}
+              value={formEdit.customerCode}
+              onChange={(e) => setFormEdit({ ...formEdit, customerCode: e.target.value })}
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white"
             >
               <option value="">-- Pilih Pelanggan --</option>
               {customers.map((c) => (
-                <option key={c.id} value={String(c.id)}>{c.name} ({c.whatsapp})</option>
+                <option key={c.code} value={c.code}>{c.name} ({c.whatsapp})</option>
               ))}
             </select>
           </div>
@@ -531,7 +531,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       {/* S05-08: Modal Hapus (Admin only) */}
       <ConfirmDialog
         title="Hapus Pesanan?"
-        message={`Anda yakin ingin menghapus pesanan #${order.id}? Data yang dihapus tidak dapat dikembalikan.`}
+        message={`Anda yakin ingin menghapus pesanan ${order.code}? Data yang dihapus tidak dapat dikembalikan.`}
         open={activeModal === 'delete'}
         onClose={() => setActiveModal(null)}
         onConfirm={submitDelete}

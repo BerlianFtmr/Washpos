@@ -14,7 +14,7 @@ import type { UserRole } from '@/types';
 export default function EditUserPage() {
   const router = useRouter();
   const params = useParams();
-  const userId = Number(params?.id);
+  const userCode = (params?.code as string) ?? '';
   /** P6-02: Halaman admin-only — redirect pegawai ke dashboard */
   const { loading: authLoading, authorized } = useAdminGuard();
 
@@ -25,14 +25,14 @@ export default function EditUserPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!userId || isNaN(userId)) {
-      showError('ID pengguna tidak valid');
+    if (!userCode) {
+      showError('Kode pengguna tidak valid');
       router.push('/users');
       return;
     }
 
     userService
-      .getById(userId)
+      .getById(userCode)
       .then((data) => {
         setForm({
           username: data.username,
@@ -45,7 +45,7 @@ export default function EditUserPage() {
         router.push('/users');
       })
       .finally(() => setLoading(false));
-  }, [userId, router]);
+  }, [userCode, router]);
 
   // P6-02: Admin-only guard — render nothing (redirect handled by hook)
   if (authLoading) return <PageLoading />;
@@ -88,7 +88,7 @@ export default function EditUserPage() {
       if (form.password) {
         payload.password = form.password;
       }
-      await userService.update(userId, payload);
+      await userService.update(userCode, payload);
       showSuccess('Data pengguna berhasil diperbarui');
       /** Navigasi ke SCR-12: Daftar Pengguna */
       router.push('/users');
@@ -112,7 +112,7 @@ export default function EditUserPage() {
       <Breadcrumb
         items={[
           { label: 'Pengguna', href: '/users' },
-          { label: `Edit #${userId}` },
+          { label: `Edit ${userCode}` },
         ]}
       />
 
@@ -121,7 +121,7 @@ export default function EditUserPage() {
           <div className="p-5 border-b border-slate-200 bg-slate-50/50">
             <h1 className="text-xl font-bold text-slate-800">Edit Pengguna</h1>
             <p className="text-sm text-slate-500 mt-1">
-              Perbarui data username, role, atau ganti password pengguna #{userId}.
+              Perbarui data username, role, atau ganti password pengguna {userCode}.
             </p>
           </div>
 
