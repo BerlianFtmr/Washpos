@@ -40,10 +40,10 @@ async function getDashboard(userId = null, userRole = 'admin') {
       FIELD(o.status, 'pending', 'dicuci', 'disetrika', 'siap', 'diambil', 'cancelled')
   `, userParam);
 
-  // Recent orders (last 5)
+  // Recent orders (last 5) — FASE 4: expose `code`, not internal `id`
   const [recentOrders] = await pool.query(`
     SELECT
-      o.id,
+      o.code,
       c.name as customer_name,
       o.status,
       o.total_price,

@@ -1,17 +1,15 @@
 /**
- * resolveIdParam Middleware (FASE 2 — Backend Dual Support)
+ * resolveIdParam Middleware (FASE 4 — Code-Only)
  *
- * Factory middleware yang membuat route param `:id` mendukung DUA mode:
- *   1. **Code mode** — value ber-format entity code (`PREFIX-...`, mis. `CUS-4F8KP2`).
- *      Middleware memvalidasi format, memastikan prefix sesuai entity route,
- *      lalu lookup ke DB untuk mendapatkan INT id. Hasil resolve di-inject ke
- *      `req.params.id` (sebagai number) dan `req.params.code` (original string).
- *   2. **Legacy numeric mode** — value adalah integer (mis. `5`). Pass-through
- *      langsung ke `req.params.id` sebagai number. Tetap berfungsi untuk
- *      kompatibilitas mundur (akan dihapus di FASE 4).
+ * Factory middleware yang resolve route param `:id` dari entity code
+ * (`PREFIX-...`, mis. `CUS-4F8KP2`). Middleware memvalidasi format, memastikan
+ * prefix sesuai entity route, lalu lookup ke DB untuk mendapatkan INT id.
+ * Hasil resolve di-inject ke `req.params.id` (sebagai number) dan
+ * `req.params.code` (original string, uppercased).
  *
- * Saat nilai bukan integer maupun code valid → response 400.
- * Saat code valid format tapi tidak ditemukan di DB → response 404.
+ * FASE 4: dukungan numeric (legacy) dihapus. Value yang bukan code valid → 400.
+ *
+ * Saat code valid format tapi tidak ditemukan di DB → 404.
  *
  * Usage di routes:
  *   router.get('/:id', protect, resolveIdParam('customers'), detail);
@@ -49,7 +47,7 @@ function capitalize(s) {
  *
  * Post-condition (berhasil):
  *   - `req.params.id` selalu number (resolved int).
- *   - `req.params.code` di-set HANYA bila input adalah code (undefined untuk legacy).
+ *   - `req.params.code` di-set ke code string (uppercase).
  */
 function resolveIdParam(entityTable) {
   if (!entityTable || typeof entityTable !== 'string') {
@@ -65,62 +63,64 @@ function resolveIdParam(entityTable) {
 
     const rawStr = String(raw);
 
-    // === Branch 1: value terlihat seperti entity code ===
-    if (isCode(rawStr)) {
-      const prefix = getCodePrefix(rawStr);
-
-      // Prefix harus milik entity route ini (cegah CUS-... di /orders/:id).
-      const expectedTable = ENTITY_TABLES[prefix];
-      if (expectedTable !== entityTable) {
-        return errorResponse(
-          res,
-          `Code prefix '${prefix}' does not match this resource (expected ${entityTable})`,
-          400
-        );
-      }
-
-      // Validasi ketat format per-prefix.
-      if (!isValidCode(rawStr)) {
-        return errorResponse(
-          res,
-          `Invalid code format: '${rawStr}' for prefix '${prefix}'`,
-          400
-        );
-      }
-
-      // Lookup ke DB (cached 5 menit di codeResolver).
-      let id;
-      try {
-        id = await resolveCodeToId(entityTable, rawStr);
-      } catch (err) {
-        console.error(`resolveIdParam: DB lookup error for ${entityTable}/${rawStr}:`, err);
-        return errorResponse(res, 'Failed to resolve code', 500);
-      }
-
-      if (id == null) {
-        return errorResponse(
-          res,
-          `${capitalize(entityTable)} with code '${rawStr.toUpperCase()}' not found`,
-          404
-        );
-      }
-
-      req.params.code = rawStr.toUpperCase();
-      req.params.id = id; // overwrite original string dengan resolved int
-      return next();
-    }
-
-    // === Branch 2: legacy numeric id ===
-    if (!/^\d+$/.test(rawStr)) {
+    // Reject legacy numeric id (FASE 4: code-only).
+    if (/^\d+$/.test(rawStr)) {
       return errorResponse(
         res,
-        'ID must be a positive integer or a valid entity code (format: PREFIX-...)',
+        'Numeric id is no longer supported; use the entity code instead (format: PREFIX-...)',
         400
       );
     }
 
-    req.params.id = parseInt(rawStr, 10);
-    // req.params.code tetap undefined (legacy mode)
+    // Harus terlihat seperti entity code.
+    if (!isCode(rawStr)) {
+      return errorResponse(
+        res,
+        'ID must be a valid entity code (format: PREFIX-..., e.g. CUS-4F8KP2)',
+        400
+      );
+    }
+
+    const prefix = getCodePrefix(rawStr);
+
+    // Prefix harus milik entity route ini (cegah CUS-... di /orders/:id).
+    const expectedTable = ENTITY_TABLES[prefix];
+    if (expectedTable !== entityTable) {
+      return errorResponse(
+        res,
+        `Code prefix '${prefix}' does not match this resource (expected ${entityTable})`,
+        400
+      );
+    }
+
+    // Validasi ketat format per-prefix.
+    if (!isValidCode(rawStr)) {
+      return errorResponse(
+        res,
+        `Invalid code format: '${rawStr}' for prefix '${prefix}'`,
+        400
+      );
+    }
+
+    // Lookup ke DB (cached 5 menit di codeResolver).
+    let id;
+    try {
+      id = await resolveCodeToId(entityTable, rawStr);
+    } catch (err) {
+      console.error(`resolveIdParam: DB lookup error for ${entityTable}/${rawStr}:`, err);
+      return errorResponse(res, 'Failed to resolve code', 500);
+    }
+
+    if (id == null) {
+      return errorResponse(
+        res,
+        `${capitalize(entityTable)} with code '${rawStr.toUpperCase()}' not found`,
+        404
+      );
+    }
+
+    req.params.code = rawStr.toUpperCase();
+    req.params.id = id; // overwrite original string dengan resolved int
     return next();
   };
 }

@@ -1,8 +1,10 @@
 /**
- * Unit tests — resolveIdParam middleware (FASE 2)
+ * Unit tests — resolveIdParam middleware (FASE 4 — Code-Only)
  *
  * resolveCodeToId di-mock agar tidak menyentuh DB. Pure functions (isCode,
  * isValidCode, getCodePrefix, ENTITY_TABLES) tetap real dari codeResolver.
+ *
+ * FASE 4: legacy numeric id ditolak (→ 400). Hanya code valid yang diterima.
  */
 
 // Mock hanya resolveCodeToId (DB-backed); sisanya pakai implementasi asli.
@@ -30,25 +32,24 @@ function makeReqRes(idParam) {
   return { req, res, next };
 }
 
-describe('resolveIdParam — numeric (legacy) mode', () => {
+describe('resolveIdParam — legacy numeric rejected (FASE 4)', () => {
   beforeEach(() => resolveCodeToId.mockReset());
 
-  test('numeric string → parsed as int, next() called, no code', async () => {
+  test('numeric string → 400 (legacy no longer supported)', async () => {
     const mw = resolveIdParam('customers');
     const { req, res, next } = makeReqRes('42');
     await mw(req, res, next);
-    expect(next).toHaveBeenCalledTimes(1);
-    expect(req.params.id).toBe(42);
-    expect(req.params.code).toBeUndefined();
+    expect(next).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(400);
+    expect(res.body.success).toBe(false);
     expect(resolveCodeToId).not.toHaveBeenCalled();
-    expect(res.statusCode).toBe(200);
   });
 
-  test('"0"-prefix numeric still treated as int', async () => {
+  test('"0"-prefix numeric still rejected', async () => {
     const mw = resolveIdParam('orders');
     const { req, res, next } = makeReqRes('007');
     await mw(req, res, next);
-    expect(req.params.id).toBe(7);
+    expect(res.statusCode).toBe(400);
   });
 
   test('garbage non-numeric non-code → 400', async () => {
@@ -67,7 +68,7 @@ describe('resolveIdParam — numeric (legacy) mode', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  test('negative number string → 400 (not matched by ^\\d+$)', async () => {
+  test('negative number string → 400', async () => {
     const mw = resolveIdParam('customers');
     const { req, res, next } = makeReqRes('-5');
     await mw(req, res, next);

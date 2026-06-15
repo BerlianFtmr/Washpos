@@ -6,6 +6,7 @@
 const { body, validationResult } = require('express-validator');
 const { findAll, findById, findByWhatsapp, create, update, remove } = require('../queries/customerQueries');
 const { successResponse, errorResponse, validationError } = require('../utils/response');
+const { sanitizeCustomer } = require('../utils/sanitize');
 const pool = require('../config/database');
 
 /**
@@ -51,7 +52,7 @@ async function list(req, res) {
 
     const result = await findAll(search, page, limit);
 
-    return successResponse(res, 'Customers retrieved successfully', result.customers, 200, {
+    return successResponse(res, 'Customers retrieved successfully', result.customers.map(sanitizeCustomer), 200, {
       pagination: result.pagination
     });
   } catch (error) {
@@ -73,7 +74,7 @@ async function detail(req, res) {
       return errorResponse(res, 'Customer not found', 404);
     }
 
-    return successResponse(res, 'Customer retrieved successfully', customer);
+    return successResponse(res, 'Customer retrieved successfully', sanitizeCustomer(customer));
   } catch (error) {
     console.error('Get customer error:', error);
     return errorResponse(res, 'Failed to retrieve customer', 500);
@@ -104,7 +105,7 @@ async function createNew(req, res) {
 
     const customer = await findById(customerId);
 
-    return successResponse(res, 'Customer created successfully', customer, 201);
+    return successResponse(res, 'Customer created successfully', sanitizeCustomer(customer), 201);
   } catch (error) {
     console.error('Create customer error:', error);
     return errorResponse(res, 'Failed to create customer', 500);
@@ -144,7 +145,7 @@ async function updateData(req, res) {
 
     const updated = await findById(id);
 
-    return successResponse(res, 'Customer updated successfully', updated);
+    return successResponse(res, 'Customer updated successfully', sanitizeCustomer(updated));
   } catch (error) {
     console.error('Update customer error:', error);
     return errorResponse(res, 'Failed to update customer', 500);

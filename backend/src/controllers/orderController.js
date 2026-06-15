@@ -2,69 +2,59 @@
  * Order Controller
  * CRUD logic untuk orders + status update + audit trail
  *
- * FASE 2: payload & filter menerima entity code (customer_code, service_code,
- * order_code) SELAIN legacy id (customer_id, service_id, order_id). Response
- * otomatis menyertakan field `code` via query layer.
+ * FASE 4: payload & filter HANYA menerima entity code (customer_code,
+ * service_code). Legacy `*_id` ditolak. Response publik di-sanitize: field
+ * internal `id`/`customer_id`/`user_id` dihapus (lihat utils/sanitize.js).
  */
 
 const { body, validationResult } = require('express-validator');
 const { findAll, findDetail, create, update, updateStatus, updatePaymentStatus, remove, getAuditLogs } = require('../queries/orderQueries');
 const { successResponse, errorResponse, validationError } = require('../utils/response');
-const { resolveCodeToId, isCode } = require('../utils/codeResolver');
-const { isEntityCode, isPositiveInt } = require('../validators/codeValidator');
+const { resolveCodeToId } = require('../utils/codeResolver');
+const { isEntityCode } = require('../validators/codeValidator');
+const { sanitizeOrder, sanitizeOrderRow } = require('../utils/sanitize');
 
 const VALID_STATUSES = ['pending', 'dicuci', 'disetrika', 'siap', 'diambil', 'cancelled'];
 
 /**
- * Validation rules
+ * Validation rules (FASE 4 — code-only)
  *
- * Create/update order menerima referensi entity dalam dua bentuk:
- *   - Legacy: customer_id (int), items[].service_id (int)
- *   - Code   : customer_code (CUS-XXXXXX), items[].service_code (SVC-NN)
- * Field *_id juga boleh berisi code string (flexible).
+ * Create/update order wajib menerima referensi entity sebagai code:
+ *   - customer_code (CUS-XXXXXX)
+ *   - items[].service_code (SVC-NN)
+ * Field `customer_id` / `items[].service_id` (legacy) ditolak eksplisit.
  */
 const createOrderValidation = [
   body('customer_id')
     .optional()
-    .custom((v) => isPositiveInt(v) || isEntityCode('CUS', v))
-    .withMessage('customer_id must be a positive integer or a valid CUS code'),
+    .custom(() => {
+      throw new Error('customer_id is no longer supported; use customer_code (e.g. CUS-4F8KP2)');
+    }),
   body('customer_code')
-    .optional()
     .custom((v) => isEntityCode('CUS', v))
-    .withMessage('customer_code must be a valid CUS code (e.g. CUS-4F8KP2)'),
-  body().custom((body) => {
-    if (body.customer_id === undefined && body.customer_code === undefined) {
-      throw new Error('Either customer_id or customer_code is required');
-    }
-    return true;
-  }),
+    .withMessage('customer_code is required and must be a valid CUS code (e.g. CUS-4F8KP2)'),
   body('items')
     .isArray({ min: 1 })
     .withMessage('At least one item is required'),
   body('items.*.service_id')
     .optional()
-    .custom((v) => isPositiveInt(v) || isEntityCode('SVC', v))
-    .withMessage('service_id must be a positive integer or a valid SVC code'),
+    .custom(() => {
+      throw new Error('service_id is no longer supported; use service_code (e.g. SVC-01)');
+    }),
   body('items.*.service_code')
-    .optional()
     .custom((v) => isEntityCode('SVC', v))
-    .withMessage('service_code must be a valid SVC code (e.g. SVC-01)'),
+    .withMessage('service_code is required and must be a valid SVC code (e.g. SVC-01)'),
   body('items.*.quantity')
     .isFloat({ gt: 0 })
-    .withMessage('Quantity must be greater than 0'),
-  body('items.*').custom((item) => {
-    if (item.service_id === undefined && item.service_code === undefined) {
-      throw new Error('Each item requires service_id or service_code');
-    }
-    return true;
-  })
+    .withMessage('Quantity must be greater than 0')
 ];
 
 const updateOrderValidation = [
   body('customer_id')
     .optional()
-    .custom((v) => isPositiveInt(v) || isEntityCode('CUS', v))
-    .withMessage('customer_id must be a positive integer or a valid CUS code'),
+    .custom(() => {
+      throw new Error('customer_id is no longer supported; use customer_code');
+    }),
   body('customer_code')
     .optional()
     .custom((v) => isEntityCode('CUS', v))
@@ -82,36 +72,22 @@ const updateStatusValidation = [
 ];
 
 /**
- * Resolve reference entity (customer/service) ke INT id.
- * Menerima: number (pass-through), code string di `value`, atau code di `codeField`.
+ * Resolve reference entity code ke INT id internal.
  *
- * @param {*} idLike - nilai field *_id (bisa int, code string, atau undefined)
- * @param {*} codeLike - nilai field *_code (bisa code string atau undefined)
- * @param {string} prefix - 'CUS' | 'SVC' | ...
+ * @param {*} codeLike - nilai field *_code (code string)
  * @param {string} table - 'customers' | 'services' | ...
  * @param {string} label - label utk pesan error
  * @returns {Promise<{id: number|null, error: string|null}>}
  */
-async function resolveEntityRef(idLike, codeLike, prefix, table, label) {
-  if (codeLike !== undefined && codeLike !== null && codeLike !== '') {
-    const id = await resolveCodeToId(table, codeLike);
-    if (id == null) {
-      return { id: null, error: `${label} with code '${String(codeLike).toUpperCase()}' not found` };
-    }
-    return { id, error: null };
+async function resolveEntityCode(codeLike, table, label) {
+  if (codeLike === undefined || codeLike === null || codeLike === '') {
+    return { id: null, error: `${label} code is required` };
   }
-  if (idLike !== undefined && idLike !== null) {
-    if (isCode(String(idLike))) {
-      const id = await resolveCodeToId(table, String(idLike));
-      if (id == null) {
-        return { id: null, error: `${label} with code '${String(idLike).toUpperCase()}' not found` };
-      }
-      return { id, error: null };
-    }
-    // numeric
-    return { id: Number(idLike), error: null };
+  const id = await resolveCodeToId(table, codeLike);
+  if (id == null) {
+    return { id: null, error: `${label} with code '${String(codeLike).toUpperCase()}' not found` };
   }
-  return { id: null, error: `${label} reference is required` };
+  return { id, error: null };
 }
 
 /**
@@ -124,12 +100,10 @@ async function list(req, res) {
       status: req.query.status
     };
 
-    // Customer filter: customer_code (resolve) atau customer_id (legacy)
+    // Customer filter: customer_code (resolve ke id internal)
     if (req.query.customer_code) {
       const cid = await resolveCodeToId('customers', req.query.customer_code);
       if (cid != null) filters.customer_id = cid;
-    } else if (req.query.customer_id) {
-      filters.customer_id = parseInt(req.query.customer_id);
     }
 
     // Pegawai hanya bisa lihat order sendiri
@@ -142,7 +116,7 @@ async function list(req, res) {
 
     const result = await findAll(filters, page, limit);
 
-    return successResponse(res, 'Orders retrieved successfully', result.orders, 200, {
+    return successResponse(res, 'Orders retrieved successfully', result.orders.map(sanitizeOrderRow), 200, {
       pagination: result.pagination
     });
   } catch (error) {
@@ -154,7 +128,8 @@ async function list(req, res) {
 /**
  * GET /orders/:id
  * Detail order dengan items. `req.params.id` sudah di-resolve oleh middleware
- * resolveIdParam (bisa int dari code ATAU legacy numeric).
+ * resolveIdParam (code → int). Pegawai isolation pakai user_id internal
+ * (sebelum di-sanitize dari response).
  */
 async function detail(req, res) {
   try {
@@ -174,7 +149,7 @@ async function detail(req, res) {
     const auditLogs = await getAuditLogs(id);
     order.audit_logs = auditLogs;
 
-    return successResponse(res, 'Order retrieved successfully', order);
+    return successResponse(res, 'Order retrieved successfully', sanitizeOrder(order));
   } catch (error) {
     console.error('Get order error:', error);
     return errorResponse(res, 'Failed to retrieve order', 500);
@@ -195,11 +170,7 @@ async function createNew(req, res) {
     const { items, notes } = req.body;
 
     // Resolve customer reference
-    const cust = await resolveEntityRef(
-      req.body.customer_id,
-      req.body.customer_code,
-      'CUS', 'customers', 'Customer'
-    );
+    const cust = await resolveEntityCode(req.body.customer_code, 'customers', 'Customer');
     if (cust.error) {
       return errorResponse(res, cust.error, 404);
     }
@@ -207,11 +178,7 @@ async function createNew(req, res) {
     // Resolve setiap item service reference
     const resolvedItems = [];
     for (const [i, item] of items.entries()) {
-      const svc = await resolveEntityRef(
-        item.service_id,
-        item.service_code,
-        'SVC', 'services', `Service (item ${i + 1})`
-      );
+      const svc = await resolveEntityCode(item.service_code, 'services', `Service (item ${i + 1})`);
       if (svc.error) {
         return errorResponse(res, svc.error, 404);
       }
@@ -228,7 +195,7 @@ async function createNew(req, res) {
 
     const order = await findDetail(orderId);
 
-    return successResponse(res, 'Order created successfully', order, 201);
+    return successResponse(res, 'Order created successfully', sanitizeOrder(order), 201);
   } catch (error) {
     console.error('Create order error:', error);
 
@@ -242,7 +209,7 @@ async function createNew(req, res) {
 
 /**
  * PATCH /orders/:id
- * Update order (customer_id/customer_code, notes).
+ * Update order (customer_code, notes).
  */
 async function updateData(req, res) {
   const errors = validationResult(req);
@@ -255,12 +222,8 @@ async function updateData(req, res) {
     const data = {};
 
     // Resolve customer reference bila ada
-    if (req.body.customer_id !== undefined || req.body.customer_code !== undefined) {
-      const cust = await resolveEntityRef(
-        req.body.customer_id,
-        req.body.customer_code,
-        'CUS', 'customers', 'Customer'
-      );
+    if (req.body.customer_code !== undefined) {
+      const cust = await resolveEntityCode(req.body.customer_code, 'customers', 'Customer');
       if (cust.error) {
         return errorResponse(res, cust.error, 404);
       }
@@ -287,7 +250,7 @@ async function updateData(req, res) {
 
     const updated = await findDetail(id);
 
-    return successResponse(res, 'Order updated successfully', updated);
+    return successResponse(res, 'Order updated successfully', sanitizeOrder(updated));
   } catch (error) {
     console.error('Update order error:', error);
     return errorResponse(res, 'Failed to update order', 500);
@@ -329,7 +292,7 @@ async function updateStatusHandler(req, res) {
 
     const updated = await findDetail(id);
 
-    return successResponse(res, 'Order status updated successfully', updated);
+    return successResponse(res, 'Order status updated successfully', sanitizeOrder(updated));
   } catch (error) {
     console.error('Update status error:', error);
     return errorResponse(res, 'Failed to update order status', 500);

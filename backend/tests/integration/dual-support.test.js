@@ -1,13 +1,14 @@
 /**
- * Integration tests — Backend Dual Support (FASE 2)
+ * Integration tests — Backend Code-Only Strategy (FASE 4)
  *
- * Menguja alur lengkap: route → resolveIdParam middleware → controller → query
+ * Menguji alur lengkap: route → resolveIdParam middleware → controller → query
  * layer, dengan pool MySQL di-mock. Membuktikan bahwa:
- *   1. GET /customers/:code dan GET /customers/:id menghasilkan response setara.
+ *   1. GET /customers/:code → 200, response hanya berisi `code` (tanpa `id`).
  *   2. POST /orders menerima customer_code + service_code (resolve ke id).
  *   3. POST /orders/:orderCode/payments bekerja (order di-resolve dari URL).
- *   4. Code format invalid → 400; code valid tapi tidak ada → 404;
- *      prefix salah → 400.
+ *   4. Code format invalid / prefix salah / garbage → 400.
+ *   5. Code valid tapi tidak ada → 404.
+ *   6. FASE 4: legacy numeric id → 400 (dukecuali/ditolak).
  *
  * Tidak butuh supertest: pakai `app.listen(0)` + fetch (Node 18+).
  */
@@ -51,7 +52,8 @@ function buildApp() {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    req.user = { id: 1, username: 'admin', role: 'admin' };
+    // req.user.id tetap di-inject (auth middleware FASE 4 me-resolve code→id).
+    req.user = { id: 1, code: 'USR-7KQ2M9', username: 'admin', role: 'admin' };
     next();
   });
   const { resolveIdParam } = require('../../src/middleware/resolveIdParam');
@@ -107,41 +109,14 @@ const ORDER_ROW = {
   updated_at: '2026-06-14T00:00:00.000Z'
 };
 
-// Helper: dispatch pool query berdasarkan SQL string.
-// Dipakai untuk READ flows (non-transactional).
-function mockQueryDispatcher(responses) {
-  pool.query.mockImplementation(async (sql) => {
-    const s = String(sql);
-    // resolveCodeToId: SELECT id FROM `<table>` WHERE code = ?
-    if (/SELECT id FROM .+ WHERE code = \?/i.test(s)) {
-      return responses.resolveCode ?? [[{ id: 5 }], []];
-    }
-    // customer findById
-    if (/FROM customers WHERE id = \?/i.test(s)) {
-      return [[CUSTOMER_ROW], []];
-    }
-    // order findDetail main SELECT
-    if (/FROM orders o\s+WHERE o\.id = \?/i.test(s)) {
-      return [[ORDER_ROW], []];
-    }
-    // order nested customer
-    if (/FROM customers WHERE id = \?/i.test(s)) {
-      return [[CUSTOMER_ROW], []];
-    }
-    // default empty
-    return [[], []];
-  });
-}
-
 // === Tests ===================================================================
 
-describe('Customer — dual support (GET by code vs by id)', () => {
+describe('Customer — code-only (GET by code)', () => {
   beforeEach(() => {
     resetPoolMocks();
-    mockQueryDispatcher({});
   });
 
-  test('GET /customers/CUS-4F8KP2 → 200, response includes code field', async () => {
+  test('GET /customers/CUS-4F8KP2 → 200, response includes code field (no id)', async () => {
     // resolveCodeToId → id 5; findById → CUSTOMER_ROW
     pool.query
       .mockResolvedValueOnce([[{ id: 5 }], []])   // resolve code
@@ -152,20 +127,9 @@ describe('Customer — dual support (GET by code vs by id)', () => {
     const body = await res.json();
     expect(body.success).toBe(true);
     expect(body.data.code).toBe('CUS-4F8KP2');
-    expect(body.data.id).toBe(5);
+    // FASE 4: internal `id` tidak boleh bocor ke response publik
+    expect(body.data.id).toBeUndefined();
     expect(body.data.name).toBe('Ahmad');
-  });
-
-  test('GET /customers/5 (numeric) → 200, same shape (dual support)', async () => {
-    pool.query.mockResolvedValueOnce([[CUSTOMER_ROW], []]); // findById only
-
-    const res = await fetch(`${baseUrl}/customers/5`);
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data.id).toBe(5);
-    expect(body.data.code).toBe('CUS-4F8KP2');
-    // Pastikan resolveCodeToId tidak dipanggil untuk numeric
-    expect(pool.query).toHaveBeenCalledTimes(1);
   });
 
   test('GET /customers/cus-4f8kp2 (lowercase) → 200 (case-insensitive)', async () => {
@@ -201,16 +165,42 @@ describe('Customer — dual support (GET by code vs by id)', () => {
     expect(body.message).toMatch(/not found/i);
   });
 
-  test('GET /customers/garbage! → 400 (not int, not code)', async () => {
+  test('GET /customers/garbage! → 400 (not a valid code)', async () => {
     const res = await fetch(`${baseUrl}/customers/garbage!`);
     expect(res.status).toBe(400);
+  });
+});
+
+describe('FASE 4 — legacy numeric id is rejected', () => {
+  beforeEach(() => resetPoolMocks());
+
+  test('GET /customers/5 (numeric) → 400 (dual support removed)', async () => {
+    const res = await fetch(`${baseUrl}/customers/5`);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.message).toMatch(/numeric id is no longer supported|use the entity code/i);
+    // Pastikan DB tidak di-query sama sekali (middleware menolak sebelum controller)
+    expect(pool.query).not.toHaveBeenCalled();
+  });
+
+  test('GET /orders/11 (numeric) → 400', async () => {
+    const res = await fetch(`${baseUrl}/orders/11`);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ success: false });
+  });
+
+  test('GET /payments/22 (numeric) → 400', async () => {
+    const res = await fetch(`${baseUrl}/payments/22`);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ success: false });
   });
 });
 
 describe('Order — create with customer_code + service_code', () => {
   beforeEach(() => resetPoolMocks());
 
-  test('POST /orders with codes → 201, response order has generated code', async () => {
+  test('POST /orders with codes → 201, response order has generated code & no id', async () => {
     // Resolve customer_code → id 5
     // Resolve service_code → id 1
     // Inside orderQueries.create (transaction):
@@ -254,18 +244,35 @@ describe('Order — create with customer_code + service_code', () => {
     expect(body.success).toBe(true);
     expect(body.data.code).toMatch(/^ORD-\d{6}-[0-9A-HJKMNP-TV-Z]{6}$/);
     expect(body.data.customer.code).toBe('CUS-4F8KP2');
+    // FASE 4: internal id/FK fields stripped
+    expect(body.data.id).toBeUndefined();
+    expect(body.data.customer_id).toBeUndefined();
+    expect(body.data.user_id).toBeUndefined();
+    expect(body.data.customer.id).toBeUndefined();
     // Verify transaction was committed
     expect(mockConn.beginTransaction).toHaveBeenCalled();
     expect(mockConn.commit).toHaveBeenCalled();
     expect(mockConn.rollback).not.toHaveBeenCalled();
   });
 
-  test('POST /orders with neither customer_id nor customer_code → 422 validation error', async () => {
+  test('POST /orders missing customer_code → 422 validation error', async () => {
     const res = await fetch(`${baseUrl}/orders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        items: [{ service_id: 1, quantity: 5 }]
+        items: [{ service_code: 'SVC-01', quantity: 5 }]
+      })
+    });
+    expect(res.status).toBe(422);
+  });
+
+  test('POST /orders with legacy customer_id → 422 (rejected)', async () => {
+    const res = await fetch(`${baseUrl}/orders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customer_id: 5,
+        items: [{ service_code: 'SVC-01', quantity: 5 }]
       })
     });
     expect(res.status).toBe(422);
@@ -277,7 +284,7 @@ describe('Order — create with customer_code + service_code', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         customer_code: 'CUS-01', // wrong shape for CUS prefix
-        items: [{ service_id: 1, quantity: 5 }]
+        items: [{ service_code: 'SVC-01', quantity: 5 }]
       })
     });
     expect(res.status).toBe(422);
@@ -287,7 +294,7 @@ describe('Order — create with customer_code + service_code', () => {
 describe('Payment — create via order code in URL', () => {
   beforeEach(() => resetPoolMocks());
 
-  test('POST /orders/ORD-260614-K7M2QF/payments → 201, payment has generated code', async () => {
+  test('POST /orders/ORD-260614-K7M2QF/payments → 201, payment has generated code & no id', async () => {
     // resolveIdParam('orders') resolves ORD-... → id 11
     pool.query.mockResolvedValueOnce([[{ id: 11 }], []]);
 
@@ -295,10 +302,6 @@ describe('Payment — create via order code in URL', () => {
     pool.query.mockResolvedValueOnce([[{ id: 11, code: 'ORD-260614-K7M2QF', total_price: 30000, payment_status: 'unpaid' }], []]);
 
     // paymentQueries.create (transaction):
-    //   - SELECT total_price, payment_status FROM orders WHERE id=?
-    //   - SELECT SUM(amount) FROM payments WHERE order_id=?
-    //   - INSERT payment → {insertId: 22}
-    //   - UPDATE orders SET payment_status
     mockConn.query
       .mockResolvedValueOnce([[{ total_price: 30000, payment_status: 'unpaid' }], []])
       .mockResolvedValueOnce([[{ total: 0 }], []])
@@ -321,13 +324,16 @@ describe('Payment — create via order code in URL', () => {
     expect(body.success).toBe(true);
     expect(body.data.code).toMatch(/^PAY-\d{6}-[0-9A-HJKMNP-TV-Z]{6}$/);
     expect(body.data.order_payment_status).toBe('paid');
+    // FASE 4: internal id/FK fields stripped
+    expect(body.data.id).toBeUndefined();
+    expect(body.data.order_id).toBeUndefined();
   });
 });
 
 describe('Payment — GET by code', () => {
   beforeEach(() => resetPoolMocks());
 
-  test('GET /payments/PAY-260614-9F2K4M → 200, response includes code', async () => {
+  test('GET /payments/PAY-260614-9F2K4M → 200, response includes code (no id)', async () => {
     // resolveIdParam('payments') resolves PAY-... → id 22
     pool.query.mockResolvedValueOnce([[{ id: 22 }], []]);
     // paymentQueries.findById(22)
@@ -339,5 +345,7 @@ describe('Payment — GET by code', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data.code).toBe('PAY-260614-9F2K4M');
+    expect(body.data.id).toBeUndefined();
+    expect(body.data.order_id).toBeUndefined();
   });
 });

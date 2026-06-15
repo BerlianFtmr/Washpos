@@ -342,7 +342,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ code: st
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {(order.payments ?? []).map((pay) => (
-                        <tr key={pay.id}>
+                        <tr key={pay.code}>
                           <td className="px-5 py-3 text-slate-600">{formatDate(pay.created_at)}</td>
                           <td className="px-5 py-3 text-right font-medium text-emerald-600">{formatRupiah(pay.amount)}</td>
                           <td className="px-5 py-3"><StatusBadge variant="paymentMethod" value={pay.method} /></td>

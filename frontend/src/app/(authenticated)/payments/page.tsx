@@ -117,18 +117,19 @@ export default function PaymentsPage() {
       },
     },
     {
-      key: 'order_id',
+      key: 'order',
       header: 'ID Order',
       render: (row) => {
         const p = row as unknown as Payment;
+        const orderRef = p.order?.code ?? p.order_code ?? '';
         return (
           /** Navigasi ke SCR-05: Detail Pesanan */
           <Link
-            href={`/orders/${p.order?.code ?? p.order_id}`}
+            href={orderRef ? `/orders/${orderRef}` : '#'}
             onClick={(e) => e.stopPropagation()}
             className="font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
           >
-            {p.order?.code ?? `#${p.order_id}`}
+            {orderRef || '-'}
           </Link>
         );
       },
@@ -284,7 +285,7 @@ export default function PaymentsPage() {
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         title="Hapus Pembayaran?"
-        message={`Apakah Anda yakin ingin menghapus pembayaran ${deleteTarget?.code ?? ''} sebesar ${deleteTarget ? formatRupiah(deleteTarget.amount) : ''}? Status pembayaran pada pesanan ${deleteTarget?.order?.code ?? '#' + (deleteTarget?.order_id ?? '')} akan dikalkulasi ulang.`}
+        message={`Apakah Anda yakin ingin menghapus pembayaran ${deleteTarget?.code ?? ''} sebesar ${deleteTarget ? formatRupiah(deleteTarget.amount) : ''}? Status pembayaran pada pesanan ${deleteTarget?.order?.code ?? deleteTarget?.order_code ?? ''} akan dikalkulasi ulang.`}
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}

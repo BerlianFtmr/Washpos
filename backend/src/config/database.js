@@ -13,6 +13,9 @@ const pool = mysql.createPool({
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || 'root',
   database: process.env.DB_NAME || 'laundry_db',
+  // WIB — supaya serialisasi/parsing Date object konsisten dengan
+  // perhitungan range tanggal (income recap) yang memakai local time.
+  timezone: '+07:00',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,

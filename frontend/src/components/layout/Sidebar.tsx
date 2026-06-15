@@ -8,6 +8,7 @@ import {
   Users,
   ShoppingBag,
   CreditCard,
+  BarChart3,
   UserCog,
   X,
 } from 'lucide-react';
@@ -32,6 +33,7 @@ const menuItems: MenuItem[] = [
   { icon: Users, label: 'Pelanggan', href: '/customers' },
   { icon: ShoppingBag, label: 'Layanan', href: '/services' },
   { icon: CreditCard, label: 'Pembayaran', href: '/payments' },
+  { icon: BarChart3, label: 'Rekap Penghasilan', href: '/reports/income', adminOnly: true },
   { icon: UserCog, label: 'Pengguna', href: '/users', adminOnly: true },
 ];
 

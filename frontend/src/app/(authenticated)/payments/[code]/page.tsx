@@ -46,9 +46,8 @@ export default function PaymentDetailPage() {
       setPayment(pay);
 
       // Fetch related order for payment status and totals.
-      // Prefer the nested order code when available; fall back to the
-      // numeric order_id (still accepted by the dual-mode backend).
-      const orderRef = pay.order?.code ?? String(pay.order_id);
+      const orderRef = pay.order?.code ?? pay.order_code ?? '';
+      if (!orderRef) throw new Error('missing order reference');
       const ord = await orderService.getById(orderRef);
       setOrder(ord);
 
@@ -185,10 +184,10 @@ export default function PaymentDetailPage() {
                 </p>
                 {/* Navigasi ke SCR-05: Detail Pesanan */}
                 <Link
-                  href={`/orders/${payment.order?.code ?? payment.order_id}`}
+                  href={`/orders/${payment.order?.code ?? payment.order_code ?? ''}`}
                   className="font-bold text-blue-600 hover:underline flex items-center gap-1"
                 >
-                  {payment.order?.code ?? `#${payment.order_id}`}
+                  {payment.order?.code ?? payment.order_code ?? '-'}
                 </Link>
               </div>
               <div className="sm:text-right">
@@ -334,7 +333,7 @@ export default function PaymentDetailPage() {
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         title="Hapus Pembayaran?"
-        message={`Apakah Anda yakin ingin menghapus pembayaran ${paymentCode}? Status pembayaran pada pesanan ${payment.order?.code ?? '#' + payment.order_id} akan dikalkulasi ulang dan dapat berubah.`}
+        message={`Apakah Anda yakin ingin menghapus pembayaran ${paymentCode}? Status pembayaran pada pesanan ${payment.order?.code ?? payment.order_code ?? ''} akan dikalkulasi ulang dan dapat berubah.`}
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
         onConfirm={handleDelete}

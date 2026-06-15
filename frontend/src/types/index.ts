@@ -16,10 +16,9 @@ export type PaymentMethod = 'cash' | 'transfer' | 'ewallet';
 
 export type ServiceUnit = 'kg' | 'piece' | 'meter' | 'pair';
 
-// ─── Entities ──────────────────────────────────────────────────────
+// ─── Entities (FASE 4: public API uses `code` only; internal `id` removed) ───
 
 export interface User {
-  id: number;
   code: string;
   username: string;
   role: UserRole;
@@ -27,7 +26,6 @@ export interface User {
 }
 
 export interface Customer {
-  id: number;
   code: string;
   name: string;
   whatsapp: string;
@@ -37,7 +35,6 @@ export interface Customer {
 }
 
 export interface Service {
-  id: number;
   code: string;
   name: string;
   price: number;
@@ -56,10 +53,7 @@ export interface OrderItem {
 }
 
 export interface Order {
-  id: number;
   code: string;
-  customer_id: number;
-  user_id: number;
   status: OrderStatus;
   payment_status: PaymentStatus;
   total_price: number;
@@ -74,15 +68,17 @@ export interface Order {
 }
 
 export interface Payment {
-  id: number;
   code: string;
-  order_id: number;
   amount: number;
   method: PaymentMethod;
   note: string | null;
   created_at: string;
-  order?: Order;
+  // Denormalized display fields (list endpoint)
+  order_code?: string;
+  order_total_price?: number;
+  order_payment_status?: PaymentStatus;
   customer?: Customer;
+  order?: Order;
 }
 
 export interface AuditLog {
@@ -98,7 +94,6 @@ export interface AuditLog {
 // ─── Auth ──────────────────────────────────────────────────────────
 
 export interface AuthUser {
-  id: number;
   code: string;
   username: string;
   role: UserRole;
