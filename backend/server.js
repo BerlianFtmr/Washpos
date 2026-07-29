@@ -11,6 +11,7 @@ const swaggerUi = require('swagger-ui-express');
 require('dotenv').config();
 
 const routes = require('./src/routes');
+const { runOnStartup, healthCheck } = require('./migrations/runner');
 
 // Initialize Express app
 const app = express();
@@ -168,17 +169,47 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start Server
+// Start Server with Migrations
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log('╔══════════════════════════════════════════════════════════╗');
-  console.log('║     Laundry Management System - RESTful API             ║');
-  console.log('╚══════════════════════════════════════════════════════════╝');
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📚 API Docs: http://localhost:${PORT}/api-docs`);
-  console.log(`🔗 Base URL: http://localhost:${PORT}/api/v1`);
-  console.log('╔══════════════════════════════════════════════════════════╗');
-});
+
+async function startServer() {
+  try {
+    console.log('╔══════════════════════════════════════════════════════════╗');
+    console.log('║     Laundry Management System - RESTful API             ║');
+    console.log('╚══════════════════════════════════════════════════════════╝');
+
+    // Run migrations on startup
+    console.log('🔄 Running database migrations...');
+    await runOnStartup();
+
+    // Health check - verify critical migrations
+    console.log('🏥 Running migration health check...');
+    const healthResult = await healthCheck();
+
+    if (!healthResult.healthy) {
+      console.error('❌ Migration health check failed!');
+      console.error(`⚠️  Error: ${healthResult.error}`);
+      console.error('⚠️  Server will continue, but some features may not work correctly.');
+      console.error('⚠️  Please check database connection and migration files.');
+    } else {
+      console.log('✅ Migration health check passed!');
+    }
+
+    // Start listening
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`📚 API Docs: http://localhost:${PORT}/api-docs`);
+      console.log(`🔗 Base URL: http://localhost:${PORT}/api/v1`);
+      console.log('╔══════════════════════════════════════════════════════════╗');
+    });
+  } catch (error) {
+    console.error('❌ Failed to start server:', error.message);
+    process.exit(1);
+  }
+}
+
+// Start server asynchronously
+startServer();
 
 module.exports = app;
