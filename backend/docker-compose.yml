@@ -11,16 +11,13 @@ services:
     ports:
       - "3307:3306"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - ./mysql_data:/var/lib/mysql
       # Note: Migrations now handled by Umzug programmatically, not via docker-entrypoint-initdb.d
       # The migration runner (migrations/runner.js) runs on server startup
     networks:
-      - laundry_network
+      - washpos_network
     command: --default-authentication-plugin=mysql_native_password
 
-volumes:
-  mysql_data:
-
 networks:
-  laundry_network:
+  washpos_network:
     driver: bridge

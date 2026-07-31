@@ -169,8 +169,6 @@ TODO-v1.md
 scratchpad.md
 workspace.md
 2026-06-12_washpos-ui-specification.md
-PRD_Washpos.md
-SRS_Washpos.md
 referensi-ui/
 docs/
 BUGFIX-LOG.md
@@ -193,3 +191,22 @@ backups/
 # ==========================================
 .docker/
 docker-compose.override.yml
+
+# ==========================================
+# DOCKER PRODUCTION DEPLOYMENT (docker-production/)
+# ==========================================
+# Secrets & runtime config (jangan pernah commit)
+docker-production/.env
+# Backup dumps DB (Fase 3+)
+docker-production/backups/
+# Staging bila ada file env tambahan
+docker-production/.env.*
+
+# ==========================================
+# BACKUP FILES (rotasi secret/konfig)
+# ==========================================
+*.backup
+*.backup-*
+*.bak-*
+ecosystem.config.js
+mysql_data
