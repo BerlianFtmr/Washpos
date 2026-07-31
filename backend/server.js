@@ -17,8 +17,24 @@ const { runOnStartup, healthCheck } = require('./migrations/runner');
 const app = express();
 
 // Middleware
+// Parse CORS_ORIGIN from comma-separated string to array
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
+  : '*';
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
+  origin: allowedOrigins === '*'
+    ? '*'
+    : (origin, callback) => {
+        // Allow requests with no origin (mobile apps, curl, etc)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.indexOf(origin) !== -1) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
   credentials: true
 }));
 
